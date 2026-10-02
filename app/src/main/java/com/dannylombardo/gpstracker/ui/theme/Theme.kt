@@ -95,6 +95,14 @@ object RouteColors {
     val end = Color(0xFFD9473F)
 }
 
+/** Route colours on the drive map, slowest to fastest. */
+object SpeedColors {
+    val crawling = Color(0xFFE5392F)
+    val slow = Color(0xFFF2B705)
+    val fast = Color(0xFF26A65B)
+    val fastest = Color(0xFF8E44E0)
+}
+
 private val BaseTypography = Typography()
 
 private val AppTypography = BaseTypography.copy(
