@@ -18,6 +18,8 @@ class TripRepository(private val dao: TripDao) {
 
     suspend fun setDriver(tripId: Long, isMine: Boolean) = dao.setDriver(tripId, isMine)
 
+    suspend fun deleteTrip(tripId: Long) = dao.deleteTrip(tripId)
+
     suspend fun lastPoint(tripId: Long): RoutePoint? = dao.lastPoint(tripId)
 
     suspend fun routePoints(tripId: Long): List<RoutePoint> = dao.routePoints(tripId)

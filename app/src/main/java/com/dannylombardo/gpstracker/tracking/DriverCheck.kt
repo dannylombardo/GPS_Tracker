@@ -33,11 +33,11 @@ object DriverCheck {
     @SuppressLint("MissingPermission")
     fun ask(context: Context, tripId: Long, distanceMeters: Double) {
         if (!Permissions.hasNotifications(context)) return
-        val openApp = PendingIntent.getActivity(
+        val openDrive = PendingIntent.getActivity(
             context,
-            0,
-            Intent(context, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE,
+            notificationId(tripId),
+            MainActivity.openTripIntent(context, tripId),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val notification = NotificationCompat.Builder(context, GpsTrackerApp.CHANNEL_DRIVER_CHECK)
             .setSmallIcon(R.drawable.ic_car)
@@ -45,7 +45,7 @@ object DriverCheck {
             .setContentText(
                 String.format(Locale.getDefault(), "Drive of %.1f km just ended", distanceMeters / 1000),
             )
-            .setContentIntent(openApp)
+            .setContentIntent(openDrive)
             .addAction(0, "Me", answerIntent(context, tripId, isMine = true))
             .addAction(0, "Someone else", answerIntent(context, tripId, isMine = false))
             .setAutoCancel(true)
