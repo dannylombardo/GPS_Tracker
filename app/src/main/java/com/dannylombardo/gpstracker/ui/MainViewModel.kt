@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.dannylombardo.gpstracker.data.FuelEconomy
 import com.dannylombardo.gpstracker.data.FuelUp
 import com.dannylombardo.gpstracker.data.FuelUpRepository
+import com.dannylombardo.gpstracker.data.RoutePoint
+import com.dannylombardo.gpstracker.data.RouteProfile
 import com.dannylombardo.gpstracker.data.Trip
 import com.dannylombardo.gpstracker.data.TripRepository
 import com.dannylombardo.gpstracker.data.WeeklySummary
@@ -16,6 +18,7 @@ import com.dannylombardo.gpstracker.tracking.DriverCheck
 import com.dannylombardo.gpstracker.tracking.Permissions
 import com.dannylombardo.gpstracker.tracking.TrackingPrefs
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -23,10 +26,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.concurrent.ConcurrentHashMap
 
 data class PermissionState(
     val location: Boolean = false,
@@ -62,6 +67,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             FuelEconomy.summarise(fuelUps, trips)
         }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FuelEconomy.Summary(emptyList(), null))
+
+    /** Every fill-up, newest first. */
+    val allFuelUps: StateFlow<List<FuelUp>> = fuelRepository.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** The drive whose page is open, if any. */
+    private val _openTripId = MutableStateFlow<Long?>(null)
+    val openTripId: StateFlow<Long?> = _openTripId.asStateFlow()
+
+    /** Route outlines for the drive list, kept so scrolling back doesn't reload them. */
+    private val routePreviews = ConcurrentHashMap<Long, List<LatLon>>()
 
     /** The fill-up being added or edited in the fill-up form, if it's open. */
     private val _fuelDraft = MutableStateFlow<FuelUp?>(null)
@@ -133,6 +149,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setDriver(tripId: Long, isMine: Boolean) {
         DriverCheck.dismiss(app, tripId)
         viewModelScope.launch { repository.setDriver(tripId, isMine) }
+    }
+
+    fun openTrip(tripId: Long) {
+        _openTripId.value = tripId
+    }
+
+    fun closeTrip() {
+        _openTripId.value = null
+    }
+
+    fun observeTrip(tripId: Long): Flow<Trip?> = repository.observeTrip(tripId)
+
+    suspend fun routePoints(tripId: Long): List<RoutePoint> = repository.routePoints(tripId)
+
+    suspend fun routePreview(tripId: Long): List<LatLon> =
+        routePreviews[tripId] ?: RouteProfile.thin(repository.routePoints(tripId), maxPoints = 120)
+            .map { LatLon(it.latitude, it.longitude) }
+            .also { routePreviews[tripId] = it }
+
+    /** Fill-ups the app spotted on this drive's stops. */
+    fun fuelUpsForTrip(tripId: Long): Flow<List<FuelUp>> =
+        fuelRepository.observeAll().map { all -> all.filter { it.tripId == tripId } }
+
+    /** Removes a drive and its route for good, e.g. one recorded on a bus. */
+    fun deleteTrip(tripId: Long) {
+        DriverCheck.dismiss(app, tripId)
+        if (_openTripId.value == tripId) _openTripId.value = null
+        routePreviews.remove(tripId)
+        viewModelScope.launch { repository.deleteTrip(tripId) }
     }
 
     /** Opens the fill-up form: blank for now, or [draft] from a gas station notification or an existing fill-up. */
