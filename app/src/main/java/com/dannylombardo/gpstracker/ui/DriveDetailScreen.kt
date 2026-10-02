@@ -64,14 +64,16 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dannylombardo.gpstracker.data.Car
 import com.dannylombardo.gpstracker.data.RouteProfile
+import com.dannylombardo.gpstracker.data.SpeedBand
+import com.dannylombardo.gpstracker.data.SpeedRuns
 import com.dannylombardo.gpstracker.data.Trip
 import com.dannylombardo.gpstracker.ui.theme.RouteColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-/** A drive's route and profile, worked out once when its page opens. */
-private class RouteData(val points: List<LatLon>, val profile: RouteProfile)
+/** A drive's route, its speed colouring and profile, worked out once when its page opens. */
+private class RouteData(val points: List<LatLon>, val stretches: List<ColoredStretch>, val profile: RouteProfile)
 
 /** Wraps the trip so "still loading" (no value yet) differs from "deleted" (null trip). */
 private class LoadedTrip(val trip: Trip?)
@@ -89,7 +91,13 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
     val route by produceState<RouteData?>(null, tripId) {
         val points = viewModel.routePoints(tripId)
         value = withContext(Dispatchers.Default) {
-            RouteData(points.map { LatLon(it.latitude, it.longitude) }, RouteProfile.of(points))
+            RouteData(
+                points = points.map { LatLon(it.latitude, it.longitude) },
+                stretches = SpeedRuns.of(points).map { run ->
+                    ColoredStretch(run.band.color(), run.points.map { LatLon(it.latitude, it.longitude) })
+                },
+                profile = RouteProfile.of(points),
+            )
         }
     }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -177,9 +185,9 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
         )
     }
 
-    val points = route?.points
-    if (fullMap && points != null) {
-        FullScreenMap(points, onClose = { fullMap = false })
+    val fullRoute = route
+    if (fullMap && fullRoute != null) {
+        FullScreenMap(fullRoute, onClose = { fullMap = false })
     }
 }
 
@@ -209,6 +217,7 @@ private fun MapPreview(route: RouteData?, onExpand: () -> Unit) {
                     routeColor = MaterialTheme.colorScheme.primary,
                     dark = isSystemInDarkTheme(),
                     modifier = Modifier.fillMaxSize(),
+                    stretches = route.stretches,
                 )
                 // Keeps the preview still while the page scrolls; a tap opens the full map.
                 Box(Modifier.matchParentSize().clickable(onClick = onExpand))
@@ -218,6 +227,7 @@ private fun MapPreview(route: RouteData?, onExpand: () -> Unit) {
                 ) {
                     Icon(Icons.Rounded.Fullscreen, contentDescription = "Full screen map")
                 }
+                SpeedLegend(Modifier.align(Alignment.TopStart).padding(8.dp))
                 MapAttribution(Modifier.align(Alignment.BottomStart))
             }
         }
@@ -225,15 +235,17 @@ private fun MapPreview(route: RouteData?, onExpand: () -> Unit) {
 }
 
 @Composable
-private fun FullScreenMap(points: List<LatLon>, onClose: () -> Unit) {
+private fun FullScreenMap(route: RouteData, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
             RouteMap(
-                points = points,
+                points = route.points,
                 routeColor = MaterialTheme.colorScheme.primary,
                 dark = isSystemInDarkTheme(),
                 modifier = Modifier.fillMaxSize(),
+                stretches = route.stretches,
             )
+            SpeedLegend(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp))
             FilledTonalIconButton(
                 onClick = onClose,
                 modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp),
@@ -242,6 +254,35 @@ private fun FullScreenMap(points: List<LatLon>, onClose: () -> Unit) {
             }
             MapAttribution(Modifier.align(Alignment.BottomStart))
         }
+    }
+}
+
+/** What the route colours mean, in km/h. */
+@Composable
+private fun SpeedLegend(modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), CircleShape)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SpeedBand.entries.forEach { band ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(width = 12.dp, height = 4.dp).background(band.color(), CircleShape))
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    band.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+        Text(
+            "km/h",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
