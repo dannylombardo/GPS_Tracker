@@ -9,6 +9,7 @@ import com.dannylombardo.gpstracker.data.CarStats
 import com.dannylombardo.gpstracker.data.DriveHistory
 import com.dannylombardo.gpstracker.data.FuelEconomy
 import com.dannylombardo.gpstracker.data.FuelUp
+import com.dannylombardo.gpstracker.data.FuelHistory
 import com.dannylombardo.gpstracker.data.FuelUpRepository
 import com.dannylombardo.gpstracker.data.RoutePoint
 import com.dannylombardo.gpstracker.data.RouteProfile
@@ -54,6 +55,13 @@ data class CarOverview(
     val totals: CarStats.Totals,
     val litresPer100Km: Double?,
 )
+
+/** Something just moved to Recently deleted, for the "Undo" message. */
+sealed interface Binned {
+    data class Drive(val tripId: Long) : Binned
+
+    data class FillUp(val fuelUpId: Long) : Binned
+}
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application
@@ -122,9 +130,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val binnedTrips: StateFlow<List<Trip>> = repository.observeBinnedTrips()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** A drive just moved to Recently deleted, for the "Undo" message. */
-    private val _binnedEvents = Channel<Long>(Channel.BUFFERED)
-    val binnedEvents: Flow<Long> = _binnedEvents.receiveAsFlow()
+    /** Fill-ups in Recently deleted, most recently deleted first. */
+    val binnedFuelUps: StateFlow<List<FuelUp>> = fuelRepository.observeBinned()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _binnedEvents = Channel<Binned>(Channel.BUFFERED)
+    val binnedEvents: Flow<Binned> = _binnedEvents.receiveAsFlow()
 
     /** How the shown week's kilometres split between cars, for the all-cars view. */
     val weekByCar: StateFlow<List<Pair<Car, Double>>> = combine(finishedTrips, cars, _weekStart) { trips, cars, start ->
@@ -147,6 +158,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         CarStats.fuelUpsFor(fuelUps, carId)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** The shown car's fill-ups by month, newest month first. */
+    val fuelHistory: StateFlow<List<FuelHistory.Month>> = fuelUps
+        .map { FuelHistory.byMonth(it, ZoneId.systemDefault()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     /** All-time numbers per car, plus every car together (first, with a null car). */
     val carOverviews: StateFlow<Pair<CarStats.Totals, List<CarOverview>>?> =
         combine(cars, everyFuelUp, finishedTrips, economyByCar) { cars, fuelUps, trips, economy ->
@@ -162,6 +178,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Whether the All drives page is open. */
     private val _historyOpen = MutableStateFlow(false)
     val historyOpen: StateFlow<Boolean> = _historyOpen.asStateFlow()
+
+    /** Whether the All fill-ups page is open. */
+    private val _fuelHistoryOpen = MutableStateFlow(false)
+    val fuelHistoryOpen: StateFlow<Boolean> = _fuelHistoryOpen.asStateFlow()
 
     /** Whether Recently deleted is open. */
     private val _binOpen = MutableStateFlow(false)
@@ -197,7 +217,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val autoTrack: StateFlow<Boolean> = _autoTrack.asStateFlow()
 
     init {
-        viewModelScope.launch { repository.purgeExpired(System.currentTimeMillis()) }
+        purgeBin()
         // Tidy up trips left open if the app was killed mid-drive while not tracking now.
         if (!DriveState.isServiceRunning) {
             viewModelScope.launch {
@@ -278,7 +298,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_openTripId.value == tripId) _openTripId.value = null
         viewModelScope.launch {
             repository.moveToBin(tripId, System.currentTimeMillis())
-            _binnedEvents.send(tripId)
+            _binnedEvents.send(Binned.Drive(tripId))
         }
     }
 
@@ -292,9 +312,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.deleteTrip(tripId) }
     }
 
+    /** Moves a fill-up to Recently deleted. It can be brought back for 30 days. */
+    fun moveFuelUpToBin(id: Long) {
+        if (_fuelDraft.value?.id == id) _fuelDraft.value = null
+        viewModelScope.launch {
+            fuelRepository.moveToBin(id, System.currentTimeMillis())
+            _binnedEvents.send(Binned.FillUp(id))
+        }
+    }
+
+    fun restoreFuelUp(id: Long) {
+        viewModelScope.launch { fuelRepository.restore(id) }
+    }
+
+    /** Removes a fill-up for good. */
+    fun deleteFuelUpForever(id: Long) {
+        viewModelScope.launch { fuelRepository.delete(id) }
+    }
+
+    /** Brings back whatever the "Undo" message was about. */
+    fun undo(binned: Binned) = when (binned) {
+        is Binned.Drive -> restoreTrip(binned.tripId)
+        is Binned.FillUp -> restoreFuelUp(binned.fuelUpId)
+    }
+
+    /** Deletes every drive and fill-up in Recently deleted for good. */
     fun emptyBin() {
         binnedTrips.value.forEach { routePreviews.remove(it.id) }
-        viewModelScope.launch { repository.emptyBin() }
+        viewModelScope.launch {
+            repository.emptyBin()
+            fuelRepository.emptyBin()
+        }
+    }
+
+    private fun purgeBin() {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            repository.purgeExpired(now)
+            fuelRepository.purgeExpired(now)
+        }
+    }
+
+    fun openFuelHistory() {
+        _fuelHistoryOpen.value = true
+    }
+
+    fun closeFuelHistory() {
+        _fuelHistoryOpen.value = false
     }
 
     fun openHistory() {
@@ -306,7 +370,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openBin() {
-        viewModelScope.launch { repository.purgeExpired(System.currentTimeMillis()) }
+        purgeBin()
         _binOpen.value = true
     }
 
@@ -339,11 +403,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun saveFuelUp(fuelUp: FuelUp) {
         _fuelDraft.value = null
         viewModelScope.launch { fuelRepository.save(fuelUp) }
-    }
-
-    fun deleteFuelUp(id: Long) {
-        _fuelDraft.value = null
-        viewModelScope.launch { fuelRepository.delete(id) }
     }
 
     /** Shows one car on the drives and fuel screens, or all cars together when [carId] is null. */
