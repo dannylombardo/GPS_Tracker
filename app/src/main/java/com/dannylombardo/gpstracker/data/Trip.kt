@@ -9,7 +9,9 @@ import androidx.room.PrimaryKey
  * One drive. [endTime] stays null while the drive is still being recorded.
  * [isMine] is the answer to "who was driving?": null until answered. Unanswered
  * drives count as yours, so ignoring the question never loses a drive.
- * [carId] is the car it was driven in.
+ * [carId] is the car it was driven in. [deletedAt] is set while the drive sits in
+ * Recently deleted: it's left out of everything until restored, or removed for good
+ * once it has been there for [DriveBin.KEEP_DAYS] days.
  */
 @Entity(tableName = "trips")
 data class Trip(
@@ -20,6 +22,7 @@ data class Trip(
     val topSpeedMetersPerSecond: Double? = null,
     val isMine: Boolean? = null,
     val carId: Long? = null,
+    val deletedAt: Long? = null,
 ) {
     val countsAsMine: Boolean get() = isMine != false
 

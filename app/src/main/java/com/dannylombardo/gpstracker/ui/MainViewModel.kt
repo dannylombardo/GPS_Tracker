@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.dannylombardo.gpstracker.data.Car
 import com.dannylombardo.gpstracker.data.CarRepository
 import com.dannylombardo.gpstracker.data.CarStats
+import com.dannylombardo.gpstracker.data.DriveHistory
 import com.dannylombardo.gpstracker.data.FuelEconomy
 import com.dannylombardo.gpstracker.data.FuelUp
 import com.dannylombardo.gpstracker.data.FuelUpRepository
@@ -21,6 +22,7 @@ import com.dannylombardo.gpstracker.tracking.DriverCheck
 import com.dannylombardo.gpstracker.tracking.Permissions
 import com.dannylombardo.gpstracker.tracking.TrackingPrefs
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,6 +32,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -105,6 +108,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         WeeklySummary.of(emptyList(), _weekStart.value, ZoneId.systemDefault()),
     )
 
+    /** The shown car's drives, or everyone's, newest first. */
+    val trips: StateFlow<List<Trip>> = combine(finishedTrips, viewedCarId) { trips, carId ->
+        CarStats.tripsFor(trips, carId)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Every past drive of the shown car, a summary per week, newest week first. */
+    val history: StateFlow<List<WeeklySummary>> = trips
+        .map { DriveHistory.byWeek(it, ZoneId.systemDefault()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Drives in Recently deleted, most recently deleted first. */
+    val binnedTrips: StateFlow<List<Trip>> = repository.observeBinnedTrips()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** A drive just moved to Recently deleted, for the "Undo" message. */
+    private val _binnedEvents = Channel<Long>(Channel.BUFFERED)
+    val binnedEvents: Flow<Long> = _binnedEvents.receiveAsFlow()
+
     /** How the shown week's kilometres split between cars, for the all-cars view. */
     val weekByCar: StateFlow<List<Pair<Car, Double>>> = combine(finishedTrips, cars, _weekStart) { trips, cars, start ->
         CarStats.distanceByCar(cars, WeeklySummary.of(trips, start, ZoneId.systemDefault()).trips)
@@ -138,6 +159,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** Whether the All drives page is open. */
+    private val _historyOpen = MutableStateFlow(false)
+    val historyOpen: StateFlow<Boolean> = _historyOpen.asStateFlow()
+
+    /** Whether Recently deleted is open. */
+    private val _binOpen = MutableStateFlow(false)
+    val binOpen: StateFlow<Boolean> = _binOpen.asStateFlow()
+
     /** Whether the cars page is open. */
     private val _carsOpen = MutableStateFlow(false)
     val carsOpen: StateFlow<Boolean> = _carsOpen.asStateFlow()
@@ -168,6 +197,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val autoTrack: StateFlow<Boolean> = _autoTrack.asStateFlow()
 
     init {
+        viewModelScope.launch { repository.purgeExpired(System.currentTimeMillis()) }
         // Tidy up trips left open if the app was killed mid-drive while not tracking now.
         if (!DriveState.isServiceRunning) {
             viewModelScope.launch {
@@ -242,12 +272,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun fuelUpsForTrip(tripId: Long): Flow<List<FuelUp>> =
         fuelRepository.observeAll().map { all -> all.filter { it.tripId == tripId } }
 
-    /** Removes a drive and its route for good, e.g. one recorded on a bus. */
-    fun deleteTrip(tripId: Long) {
+    /** Moves a drive to Recently deleted, e.g. one recorded on a bus. It can be brought back for 30 days. */
+    fun moveToBin(tripId: Long) {
         DriverCheck.dismiss(app, tripId)
         if (_openTripId.value == tripId) _openTripId.value = null
+        viewModelScope.launch {
+            repository.moveToBin(tripId, System.currentTimeMillis())
+            _binnedEvents.send(tripId)
+        }
+    }
+
+    fun restoreTrip(tripId: Long) {
+        viewModelScope.launch { repository.restore(tripId) }
+    }
+
+    /** Removes a drive and its route for good. */
+    fun deleteTripForever(tripId: Long) {
         routePreviews.remove(tripId)
         viewModelScope.launch { repository.deleteTrip(tripId) }
+    }
+
+    fun emptyBin() {
+        binnedTrips.value.forEach { routePreviews.remove(it.id) }
+        viewModelScope.launch { repository.emptyBin() }
+    }
+
+    fun openHistory() {
+        _historyOpen.value = true
+    }
+
+    fun closeHistory() {
+        _historyOpen.value = false
+    }
+
+    fun openBin() {
+        viewModelScope.launch { repository.purgeExpired(System.currentTimeMillis()) }
+        _binOpen.value = true
+    }
+
+    fun closeBin() {
+        _binOpen.value = false
     }
 
     /**

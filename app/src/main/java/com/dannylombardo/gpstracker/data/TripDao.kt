@@ -28,6 +28,15 @@ interface TripDao {
     @Query("DELETE FROM trips WHERE id = :tripId")
     suspend fun deleteTrip(tripId: Long)
 
+    @Query("UPDATE trips SET deletedAt = :deletedAt WHERE id = :tripId")
+    suspend fun setDeletedAt(tripId: Long, deletedAt: Long?)
+
+    @Query("DELETE FROM trips WHERE deletedAt IS NOT NULL AND deletedAt < :before")
+    suspend fun deleteBinnedBefore(before: Long)
+
+    @Query("DELETE FROM trips WHERE deletedAt IS NOT NULL")
+    suspend fun emptyBin()
+
     @Query("SELECT * FROM trips WHERE endTime IS NULL ORDER BY startTime DESC")
     suspend fun unfinishedTrips(): List<Trip>
 
@@ -43,6 +52,10 @@ interface TripDao {
     @Query("SELECT * FROM trips WHERE id = :tripId")
     fun observeTrip(tripId: Long): Flow<Trip?>
 
-    @Query("SELECT * FROM trips WHERE endTime IS NOT NULL ORDER BY startTime DESC")
+    /** Finished drives, leaving out the ones in Recently deleted. */
+    @Query("SELECT * FROM trips WHERE endTime IS NOT NULL AND deletedAt IS NULL ORDER BY startTime DESC")
     fun observeFinishedTrips(): Flow<List<Trip>>
+
+    @Query("SELECT * FROM trips WHERE deletedAt IS NOT NULL ORDER BY deletedAt DESC")
+    fun observeBinnedTrips(): Flow<List<Trip>>
 }
