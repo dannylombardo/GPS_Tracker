@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.dannylombardo.gpstracker.data.Car
 import com.dannylombardo.gpstracker.data.FuelUp
 import java.util.Calendar
 
@@ -34,6 +35,7 @@ import java.util.Calendar
 @Composable
 internal fun FuelUpDialog(
     draft: FuelUp,
+    cars: List<Car>,
     onSave: (FuelUp) -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
@@ -45,6 +47,7 @@ internal fun FuelUpDialog(
     var station by remember(draft) { mutableStateOf(draft.stationName.orEmpty()) }
     var fullTank by remember(draft) { mutableStateOf(draft.isFullTank) }
     var time by remember(draft) { mutableLongStateOf(draft.time) }
+    var carId by remember(draft) { mutableStateOf(draft.carId) }
 
     val litres = parseNumber(litresText)?.takeIf { it > 0 }
     val price = parseNumber(priceText)?.takeIf { it > 0 }
@@ -79,6 +82,9 @@ internal fun FuelUpDialog(
         title = { Text(if (isNew) "Add fill-up" else "Edit fill-up") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (cars.size > 1) {
+                    CarChoiceChips(cars, selectedId = carId, onSelect = { carId = it })
+                }
                 OutlinedTextField(
                     value = litresText,
                     onValueChange = { litresText = it },
@@ -135,6 +141,7 @@ internal fun FuelUpDialog(
                                 pricePerLitre = price,
                                 isFullTank = fullTank,
                                 stationName = station.trim().ifEmpty { null },
+                                carId = carId,
                             ),
                         )
                     }

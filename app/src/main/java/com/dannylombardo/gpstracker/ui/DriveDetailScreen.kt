@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dannylombardo.gpstracker.data.Car
 import com.dannylombardo.gpstracker.data.RouteProfile
 import com.dannylombardo.gpstracker.data.Trip
 import com.dannylombardo.gpstracker.ui.theme.RouteColors
@@ -83,7 +84,8 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
         .collectAsStateWithLifecycle(initialValue = null)
     val fuelUps by remember(tripId) { viewModel.fuelUpsForTrip(tripId) }
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val fuelEconomy by viewModel.fuelEconomy.collectAsStateWithLifecycle()
+    val consumption by viewModel.consumptionByFuelUp.collectAsStateWithLifecycle()
+    val cars by viewModel.cars.collectAsStateWithLifecycle()
     val route by produceState<RouteData?>(null, tripId) {
         val points = viewModel.routePoints(tripId)
         value = withContext(Dispatchers.Default) {
@@ -141,10 +143,13 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
                 Stats(trip, route?.profile)
                 route?.profile?.takeIf { it.speeds.size >= 2 }?.let { SpeedCard(it) }
                 DriverCard(trip, onAnswer = { viewModel.setDriver(trip.id, it) })
+                if (cars.size > 1) {
+                    CarCard(cars, trip.carId, onPick = { viewModel.setTripCar(trip.id, it) })
+                }
                 if (fuelUps.isNotEmpty()) {
                     SectionHeader("Filled up on this drive")
                     fuelUps.forEach { fuelUp ->
-                        FuelUpRow(fuelUp, fuelEconomy.byFuelUp[fuelUp.id], onClick = { viewModel.openFuelUp(fuelUp) })
+                        FuelUpRow(fuelUp, consumption[fuelUp.id], onClick = { viewModel.openFuelUp(fuelUp) })
                     }
                 }
             }
@@ -375,6 +380,22 @@ private fun DriverCard(trip: Trip, onAnswer: (Boolean) -> Unit) {
                     true -> "Counts towards your weekly totals and fuel economy."
                     false -> "Left out of your weekly totals and fuel economy, but kept here."
                 },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Which car this drive was in; switching it moves the kilometres to that car's numbers. */
+@Composable
+private fun CarCard(cars: List<Car>, carId: Long?, onPick: (Long) -> Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Which car?", style = MaterialTheme.typography.titleMedium)
+            CarChoiceChips(cars, selectedId = carId, onSelect = onPick)
+            Text(
+                "Counts towards this car's totals and fuel economy.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

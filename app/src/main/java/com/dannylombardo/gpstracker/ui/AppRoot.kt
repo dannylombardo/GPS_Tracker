@@ -38,10 +38,29 @@ private enum class Tab(val label: String, val selectedIcon: ImageVector, val ico
     Fuel("Fuel", Icons.Rounded.LocalGasStation, Icons.Outlined.LocalGasStation),
 }
 
-/** The two tabs, with a drive's page sliding in over them when one is opened. */
+/** What fills the screen: the tabs, the cars page, or a drive's page, deepest last. */
+private sealed interface Page {
+    val depth: Int
+
+    data object Tabs : Page {
+        override val depth = 0
+    }
+
+    data object Cars : Page {
+        override val depth = 1
+    }
+
+    data class Drive(val tripId: Long) : Page {
+        override val depth = 2
+    }
+}
+
+/** The two tabs, with the cars page or a drive's page sliding in over them when opened. */
 @Composable
 fun AppRoot(viewModel: MainViewModel) {
     val openTripId by viewModel.openTripId.collectAsStateWithLifecycle()
+    val carsOpen by viewModel.carsOpen.collectAsStateWithLifecycle()
+    val cars by viewModel.cars.collectAsStateWithLifecycle()
     val fuelDraft by viewModel.fuelDraft.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Drives) }
     // Kept out here so each tab is scrolled where you left it after visiting a drive.
@@ -49,12 +68,16 @@ fun AppRoot(viewModel: MainViewModel) {
     val fuelList = rememberLazyListState()
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
-    BackHandler(enabled = openTripId != null) { viewModel.closeTrip() }
+    BackHandler(enabled = openTripId != null || carsOpen) {
+        if (openTripId != null) viewModel.closeTrip() else viewModel.closeCars()
+    }
+
+    val page = openTripId?.let { Page.Drive(it) } ?: if (carsOpen) Page.Cars else Page.Tabs
 
     AnimatedContent(
-        targetState = openTripId,
+        targetState = page,
         transitionSpec = {
-            val opening = targetState != null
+            val opening = targetState.depth > initialState.depth
             val motion = tween<IntOffset>(350)
             if (opening) {
                 (slideInHorizontally(motion) { it } + fadeIn()) togetherWith
@@ -64,12 +87,12 @@ fun AppRoot(viewModel: MainViewModel) {
                     (slideOutHorizontally(motion) { it } + fadeOut())
             }
         },
-        label = "drive page",
-    ) { tripId ->
-        if (tripId != null) {
-            DriveDetailScreen(tripId = tripId, viewModel = viewModel, onBack = viewModel::closeTrip)
-        } else {
-            Scaffold(
+        label = "page",
+    ) { shownPage ->
+        when (shownPage) {
+            is Page.Drive -> DriveDetailScreen(tripId = shownPage.tripId, viewModel = viewModel, onBack = viewModel::closeTrip)
+            Page.Cars -> CarsScreen(viewModel = viewModel, onBack = viewModel::closeCars)
+            Page.Tabs -> Scaffold(
                 containerColor = MaterialTheme.colorScheme.surface,
                 bottomBar = {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
@@ -98,6 +121,7 @@ fun AppRoot(viewModel: MainViewModel) {
     fuelDraft?.let { draft ->
         FuelUpDialog(
             draft = draft,
+            cars = cars,
             onSave = viewModel::saveFuelUp,
             onDelete = { viewModel.deleteFuelUp(draft.id) },
             onDismiss = viewModel::closeFuelUp,

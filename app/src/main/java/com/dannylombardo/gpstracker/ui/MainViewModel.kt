@@ -3,6 +3,9 @@ package com.dannylombardo.gpstracker.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.dannylombardo.gpstracker.data.Car
+import com.dannylombardo.gpstracker.data.CarRepository
+import com.dannylombardo.gpstracker.data.CarStats
 import com.dannylombardo.gpstracker.data.FuelEconomy
 import com.dannylombardo.gpstracker.data.FuelUp
 import com.dannylombardo.gpstracker.data.FuelUpRepository
@@ -42,35 +45,102 @@ data class PermissionState(
     val canAutoTrack get() = location && backgroundLocation && activityRecognition
 }
 
+/** One car's all-time numbers for the cars page. */
+data class CarOverview(
+    val car: Car,
+    val totals: CarStats.Totals,
+    val litresPer100Km: Double?,
+)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application
     private val repository = TripRepository.get(application)
 
     private val fuelRepository = FuelUpRepository.get(application)
 
+    private val carRepository = CarRepository.get(application)
+
     private val _weekStart = MutableStateFlow(currentWeekStart())
 
+    /** Every car, oldest first. */
+    val cars: StateFlow<List<Car>> = carRepository.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _activeCarPick = MutableStateFlow(TrackingPrefs.activeCarId(application))
+
+    /** The car new drives go to: the one picked, or the first car if that one is gone. */
+    val activeCar: StateFlow<Car?> = combine(cars, _activeCarPick) { cars, picked ->
+        cars.firstOrNull { it.id == picked } ?: cars.firstOrNull()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private val _viewedCarPick = MutableStateFlow(TrackingPrefs.viewedCarId(application))
+
+    /**
+     * The car the screens show, or null for all cars together. With only one car,
+     * or if the picked car was deleted, that's all cars.
+     */
+    val viewedCarId: StateFlow<Long?> = combine(cars, _viewedCarPick) { cars, picked ->
+        picked?.takeIf { id -> cars.size > 1 && cars.any { it.id == id } }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private val finishedTrips = repository.observeFinishedTrips()
+
+    private val everyFuelUp = fuelRepository.observeAll()
+
     val week: StateFlow<WeeklySummary> = combine(
-        repository.observeFinishedTrips(),
-        fuelRepository.observeAll(),
+        finishedTrips,
+        everyFuelUp,
         _weekStart,
-    ) { trips, fuelUps, start ->
-        WeeklySummary.of(trips, start, ZoneId.systemDefault(), fuelUps)
+        viewedCarId,
+    ) { trips, fuelUps, start, carId ->
+        WeeklySummary.of(
+            CarStats.tripsFor(trips, carId),
+            start,
+            ZoneId.systemDefault(),
+            CarStats.fuelUpsFor(fuelUps, carId),
+        )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000),
         WeeklySummary.of(emptyList(), _weekStart.value, ZoneId.systemDefault()),
     )
 
-    val fuelEconomy: StateFlow<FuelEconomy.Summary> =
-        combine(fuelRepository.observeAll(), repository.observeFinishedTrips()) { fuelUps, trips ->
-            FuelEconomy.summarise(fuelUps, trips)
-        }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FuelEconomy.Summary(emptyList(), null))
+    /** How the shown week's kilometres split between cars, for the all-cars view. */
+    val weekByCar: StateFlow<List<Pair<Car, Double>>> = combine(finishedTrips, cars, _weekStart) { trips, cars, start ->
+        CarStats.distanceByCar(cars, WeeklySummary.of(trips, start, ZoneId.systemDefault()).trips)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** Every fill-up, newest first. */
-    val allFuelUps: StateFlow<List<FuelUp>> = fuelRepository.observeAll()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /** Each car's fuel economy, from only its own fill-ups and drives. */
+    val economyByCar: StateFlow<Map<Long, FuelEconomy.Summary>> =
+        combine(cars, everyFuelUp, finishedTrips) { cars, fuelUps, trips ->
+            CarStats.economyByCar(cars, fuelUps, trips)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** The L/100km of the stretch ending at each fill-up, by fill-up id, across all cars. */
+    val consumptionByFuelUp: StateFlow<Map<Long, Double>> = economyByCar
+        .map { byCar -> byCar.values.flatMap { it.byFuelUp.entries }.associate { it.key to it.value } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    /** The shown car's fill-ups, or everyone's for all cars, newest first. */
+    val fuelUps: StateFlow<List<FuelUp>> = combine(everyFuelUp, viewedCarId) { fuelUps, carId ->
+        CarStats.fuelUpsFor(fuelUps, carId)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** All-time numbers per car, plus every car together (first, with a null car). */
+    val carOverviews: StateFlow<Pair<CarStats.Totals, List<CarOverview>>?> =
+        combine(cars, everyFuelUp, finishedTrips, economyByCar) { cars, fuelUps, trips, economy ->
+            CarStats.totals(trips, fuelUps) to cars.map { car ->
+                CarOverview(
+                    car = car,
+                    totals = CarStats.totals(CarStats.tripsFor(trips, car.id), CarStats.fuelUpsFor(fuelUps, car.id)),
+                    litresPer100Km = economy[car.id]?.averageLitresPer100Km,
+                )
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Whether the cars page is open. */
+    private val _carsOpen = MutableStateFlow(false)
+    val carsOpen: StateFlow<Boolean> = _carsOpen.asStateFlow()
 
     /** The drive whose page is open, if any. */
     private val _openTripId = MutableStateFlow<Long?>(null)
@@ -180,9 +250,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.deleteTrip(tripId) }
     }
 
-    /** Opens the fill-up form: blank for now, or [draft] from a gas station notification or an existing fill-up. */
+    /**
+     * Opens the fill-up form: blank for now, or [draft] from a gas station notification or an existing fill-up.
+     * A new fill-up goes to the drive's car when it came from a drive, else the shown car, else the active one.
+     */
     fun openFuelUp(draft: FuelUp? = null) {
-        _fuelDraft.value = draft ?: FuelUp(time = System.currentTimeMillis(), litres = 0.0, pricePerLitre = 0.0)
+        val base = draft ?: FuelUp(time = System.currentTimeMillis(), litres = 0.0, pricePerLitre = 0.0)
+        if (base.carId != null) {
+            _fuelDraft.value = base
+            return
+        }
+        viewModelScope.launch {
+            val carId = base.tripId?.let { repository.trip(it)?.carId }
+                ?: viewedCarId.value
+                ?: carRepository.activeCarId()
+            _fuelDraft.value = base.copy(carId = carId)
+        }
     }
 
     fun closeFuelUp() {
@@ -197,6 +280,47 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteFuelUp(id: Long) {
         _fuelDraft.value = null
         viewModelScope.launch { fuelRepository.delete(id) }
+    }
+
+    /** Shows one car on the drives and fuel screens, or all cars together when [carId] is null. */
+    fun viewCar(carId: Long?) {
+        TrackingPrefs.setViewedCarId(app, carId)
+        _viewedCarPick.value = carId
+    }
+
+    /** Picks the car new drives go to. A drive being recorded right now moves to it too. */
+    fun setActiveCar(carId: Long) {
+        TrackingPrefs.setActiveCarId(app, carId)
+        _activeCarPick.value = carId
+        DriveState.activeTripId.value?.let { tripId -> viewModelScope.launch { repository.setCar(tripId, carId) } }
+    }
+
+    fun setTripCar(tripId: Long, carId: Long) {
+        viewModelScope.launch { repository.setCar(tripId, carId) }
+    }
+
+    fun addCar(name: String) {
+        viewModelScope.launch { carRepository.add(name.trim()) }
+    }
+
+    fun renameCar(carId: Long, name: String) {
+        viewModelScope.launch { carRepository.rename(carId, name.trim()) }
+    }
+
+    /** Deletes a car, moving its drives and fill-ups to [moveToCarId], or deleting them too when null. */
+    fun deleteCar(carId: Long, moveToCarId: Long?) {
+        viewModelScope.launch {
+            carRepository.delete(carId, moveToCarId)
+            _activeCarPick.value = TrackingPrefs.activeCarId(app)
+        }
+    }
+
+    fun openCars() {
+        _carsOpen.value = true
+    }
+
+    fun closeCars() {
+        _carsOpen.value = false
     }
 
     fun setStationSpotting(enabled: Boolean) {

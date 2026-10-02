@@ -59,6 +59,23 @@ starts the count, so the number appears after your second full fill-up. The **Fu
 the overall average and every fill-up by month, and each fill-up shows the L/100km of the stretch
 it closed. Tap a fill-up to edit or delete it.
 
+## Cars
+
+Every drive and fill-up belongs to a car. The app starts with one car, **My car**, which holds
+everything recorded before cars existed; rename it and add more from the chips under each
+tab's title (**Add a car**, or **Cars** once there are several). The cars page shows each car's
+all-time kilometres, drives, L/100km and fuel spend, plus all cars together.
+
+- One car is used for new drives. Pick it on the **Drives** tab (**Drives go to …**) or on the
+  cars page; switching it while a drive is recording moves that drive too. A drive's page has a
+  **Which car?** picker to move it afterwards.
+- The chips switch both tabs between **All cars** (totals across every car, with a split of the
+  week's kilometres per car) and one car on its own.
+- L/100km is always worked out per car, from only that car's fill-ups and drives. A fill-up from
+  a gas station notification goes to the car of the drive that stopped there.
+- Deleting a car asks whether to move its drives and fill-ups to another car or delete them. The
+  last car can't be deleted.
+
 The app follows the phone's light or dark mode.
 
 ## Installing

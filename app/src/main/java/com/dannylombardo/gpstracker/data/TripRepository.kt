@@ -9,7 +9,10 @@ class TripRepository(private val dao: TripDao) {
 
     fun observeTrip(tripId: Long): Flow<Trip?> = dao.observeTrip(tripId)
 
-    suspend fun startTrip(startTime: Long): Long = dao.insertTrip(Trip(startTime = startTime))
+    suspend fun startTrip(startTime: Long, carId: Long): Long =
+        dao.insertTrip(Trip(startTime = startTime, carId = carId))
+
+    suspend fun trip(tripId: Long): Trip? = dao.trip(tripId)
 
     suspend fun addPoint(point: RoutePoint, distanceMeters: Double, topSpeedMetersPerSecond: Double) {
         dao.insertPoint(point)
@@ -17,6 +20,8 @@ class TripRepository(private val dao: TripDao) {
     }
 
     suspend fun setDriver(tripId: Long, isMine: Boolean) = dao.setDriver(tripId, isMine)
+
+    suspend fun setCar(tripId: Long, carId: Long) = dao.setCar(tripId, carId)
 
     suspend fun deleteTrip(tripId: Long) = dao.deleteTrip(tripId)
 
