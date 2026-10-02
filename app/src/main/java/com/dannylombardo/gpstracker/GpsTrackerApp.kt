@@ -8,15 +8,21 @@ class GpsTrackerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        val channel = NotificationChannel(
+        val tracking = NotificationChannel(
             CHANNEL_TRACKING,
             getString(R.string.channel_tracking_name),
             NotificationManager.IMPORTANCE_LOW,
         ).apply { description = getString(R.string.channel_tracking_description) }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        val driverCheck = NotificationChannel(
+            CHANNEL_DRIVER_CHECK,
+            getString(R.string.channel_driver_check_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply { description = getString(R.string.channel_driver_check_description) }
+        getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(tracking, driverCheck))
     }
 
     companion object {
         const val CHANNEL_TRACKING = "drive_tracking"
+        const val CHANNEL_DRIVER_CHECK = "driver_check"
     }
 }

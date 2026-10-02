@@ -13,11 +13,14 @@ interface TripDao {
     @Insert
     suspend fun insertPoint(point: RoutePoint)
 
-    @Query("UPDATE trips SET distanceMeters = :distanceMeters WHERE id = :tripId")
-    suspend fun updateDistance(tripId: Long, distanceMeters: Double)
+    @Query("UPDATE trips SET distanceMeters = :distanceMeters, topSpeedMetersPerSecond = :topSpeed WHERE id = :tripId")
+    suspend fun updateProgress(tripId: Long, distanceMeters: Double, topSpeed: Double)
 
-    @Query("UPDATE trips SET endTime = :endTime, distanceMeters = :distanceMeters WHERE id = :tripId")
-    suspend fun finishTrip(tripId: Long, endTime: Long, distanceMeters: Double)
+    @Query("UPDATE trips SET endTime = :endTime, distanceMeters = :distanceMeters, topSpeedMetersPerSecond = :topSpeed WHERE id = :tripId")
+    suspend fun finishTrip(tripId: Long, endTime: Long, distanceMeters: Double, topSpeed: Double?)
+
+    @Query("UPDATE trips SET isMine = :isMine WHERE id = :tripId")
+    suspend fun setDriver(tripId: Long, isMine: Boolean)
 
     @Query("DELETE FROM trips WHERE id = :tripId")
     suspend fun deleteTrip(tripId: Long)

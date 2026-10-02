@@ -37,6 +37,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".tracking.DriverAnswerReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".tracking.BootReceiver"
             android:exported="true">
             <intent-filter>

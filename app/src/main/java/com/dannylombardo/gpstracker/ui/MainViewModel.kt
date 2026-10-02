@@ -5,9 +5,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.dannylombardo.gpstracker.data.Trip
 import com.dannylombardo.gpstracker.data.TripRepository
+import com.dannylombardo.gpstracker.data.WeeklySummary
 import com.dannylombardo.gpstracker.tracking.DriveDetection
 import com.dannylombardo.gpstracker.tracking.DriveState
 import com.dannylombardo.gpstracker.tracking.DriveTrackingService
+import com.dannylombardo.gpstracker.tracking.DriverCheck
 import com.dannylombardo.gpstracker.tracking.Permissions
 import com.dannylombardo.gpstracker.tracking.TrackingPrefs
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -15,10 +17,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.ZoneId
 
 data class PermissionState(
     val location: Boolean = false,
@@ -33,8 +38,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application
     private val repository = TripRepository.get(application)
 
-    val trips: StateFlow<List<Trip>> = repository.observeFinishedTrips()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    private val _weekStart = MutableStateFlow(currentWeekStart())
+
+    val week: StateFlow<WeeklySummary> = combine(repository.observeFinishedTrips(), _weekStart) { trips, start ->
+        WeeklySummary.of(trips, start, ZoneId.systemDefault())
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        WeeklySummary.of(emptyList(), _weekStart.value, ZoneId.systemDefault()),
+    )
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val activeTrip: StateFlow<Trip?> = DriveState.activeTripId
@@ -85,6 +97,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _autoTrack.value = enabled
         }
     }
+
+    fun previousWeek() {
+        _weekStart.value = _weekStart.value.minusWeeks(1)
+    }
+
+    fun nextWeek() {
+        if (_weekStart.value < currentWeekStart()) _weekStart.value = _weekStart.value.plusWeeks(1)
+    }
+
+    fun isCurrentWeek(start: LocalDate) = start >= currentWeekStart()
+
+    fun setDriver(tripId: Long, isMine: Boolean) {
+        DriverCheck.dismiss(app, tripId)
+        viewModelScope.launch { repository.setDriver(tripId, isMine) }
+    }
+
+    private fun currentWeekStart() = WeeklySummary.weekStartOf(LocalDate.now())
 
     fun startDrive() = DriveTrackingService.startManually(app)
 

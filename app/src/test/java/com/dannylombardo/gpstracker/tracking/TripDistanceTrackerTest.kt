@@ -94,4 +94,40 @@ class TripDistanceTrackerTest {
         tracker.add(fixAt(200.0, 920))
         assertEquals(4_200.0, tracker.distanceMeters, 2.0)
     }
+
+    @Test
+    fun topSpeedUsesReportedSpeedHeldForTwoFixes() {
+        val tracker = TripDistanceTracker(startTimeMillis = 0)
+        tracker.add(fixAt(0.0, 0, speed = 20f))
+        tracker.add(fixAt(100.0, 5, speed = 25f))
+        tracker.add(fixAt(220.0, 10, speed = 30f))
+        tracker.add(fixAt(330.0, 15, speed = 22f))
+        assertEquals(25.0, tracker.topSpeedMetersPerSecond, 0.01)
+    }
+
+    @Test
+    fun topSpeedIgnoresASingleSpike() {
+        val tracker = TripDistanceTracker(startTimeMillis = 0)
+        tracker.add(fixAt(0.0, 0, speed = 20f))
+        tracker.add(fixAt(100.0, 5, speed = 20f))
+        tracker.add(fixAt(200.0, 10, speed = 60f))
+        tracker.add(fixAt(300.0, 15, speed = 20f))
+        assertEquals(20.0, tracker.topSpeedMetersPerSecond, 0.01)
+    }
+
+    @Test
+    fun topSpeedFallsBackToDistanceOverTime() {
+        val tracker = TripDistanceTracker(startTimeMillis = 0)
+        for (i in 0..4) tracker.add(fixAt(northMeters = i * 100.0, seconds = i * 5L))
+        assertEquals(20.0, tracker.topSpeedMetersPerSecond, 0.5)
+    }
+
+    @Test
+    fun restoreKeepsSavedTopSpeed() {
+        val tracker = TripDistanceTracker(startTimeMillis = 1_000_000)
+        tracker.restore(distanceMeters = 4_000.0, lastFix = fixAt(0.0, 900), topSpeedMetersPerSecond = 30.0)
+        tracker.add(fixAt(100.0, 905, speed = 20f))
+        tracker.add(fixAt(200.0, 910, speed = 20f))
+        assertEquals(30.0, tracker.topSpeedMetersPerSecond, 0.01)
+    }
 }

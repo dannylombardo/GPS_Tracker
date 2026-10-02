@@ -11,10 +11,12 @@ class TripRepository(private val dao: TripDao) {
 
     suspend fun startTrip(startTime: Long): Long = dao.insertTrip(Trip(startTime = startTime))
 
-    suspend fun addPoint(point: RoutePoint, distanceMeters: Double) {
+    suspend fun addPoint(point: RoutePoint, distanceMeters: Double, topSpeedMetersPerSecond: Double) {
         dao.insertPoint(point)
-        dao.updateDistance(point.tripId, distanceMeters)
+        dao.updateProgress(point.tripId, distanceMeters, topSpeedMetersPerSecond)
     }
+
+    suspend fun setDriver(tripId: Long, isMine: Boolean) = dao.setDriver(tripId, isMine)
 
     suspend fun lastPoint(tripId: Long): RoutePoint? = dao.lastPoint(tripId)
 
@@ -25,12 +27,18 @@ class TripRepository(private val dao: TripDao) {
      * (sitting in a parked car, a bus that barely moved) and get deleted.
      * Returns true if the trip was kept.
      */
-    suspend fun finishTrip(tripId: Long, endTime: Long, distanceMeters: Double, minDistanceMeters: Double): Boolean {
+    suspend fun finishTrip(
+        tripId: Long,
+        endTime: Long,
+        distanceMeters: Double,
+        topSpeedMetersPerSecond: Double?,
+        minDistanceMeters: Double,
+    ): Boolean {
         if (distanceMeters < minDistanceMeters) {
             dao.deleteTrip(tripId)
             return false
         }
-        dao.finishTrip(tripId, endTime, distanceMeters)
+        dao.finishTrip(tripId, endTime, distanceMeters, topSpeedMetersPerSecond)
         return true
     }
 
@@ -50,7 +58,7 @@ class TripRepository(private val dao: TripDao) {
             .filter { it.id != exceptTripId }
             .forEach { trip ->
                 val endTime = dao.lastPoint(trip.id)?.time ?: trip.startTime
-                finishTrip(trip.id, endTime, trip.distanceMeters, minDistanceMeters)
+                finishTrip(trip.id, endTime, trip.distanceMeters, trip.topSpeedMetersPerSecond, minDistanceMeters)
             }
     }
 

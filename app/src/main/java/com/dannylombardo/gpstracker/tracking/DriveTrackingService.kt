@@ -113,7 +113,11 @@ class DriveTrackingService : LifecycleService() {
             val resumable = repository.findResumableTrip(now, RESUME_WINDOW_MS)
             repository.closeAbandonedTrips(exceptTripId = resumable?.id, minDistanceMeters = MIN_TRIP_METERS)
             if (resumable != null) {
-                newTracker.restore(resumable.distanceMeters, repository.lastPoint(resumable.id)?.toFix())
+                newTracker.restore(
+                    resumable.distanceMeters,
+                    repository.lastPoint(resumable.id)?.toFix(),
+                    resumable.topSpeedMetersPerSecond ?: 0.0,
+                )
                 resumable.id
             } else {
                 repository.startTrip(now)
@@ -170,6 +174,7 @@ class DriveTrackingService : LifecycleService() {
         if (!currentTracker.add(fix)) return
 
         val distance = currentTracker.distanceMeters
+        val topSpeed = currentTracker.topSpeedMetersPerSecond
         val point = RoutePoint(
             tripId = id,
             time = fix.timeMillis,
@@ -181,7 +186,7 @@ class DriveTrackingService : LifecycleService() {
         lifecycleScope.launch {
             writeLock.withLock {
                 try {
-                    repository.addPoint(point, distance)
+                    repository.addPoint(point, distance, topSpeed)
                 } catch (e: Exception) {
                     Log.w(TAG, "Could not save route point", e)
                 }
@@ -206,11 +211,13 @@ class DriveTrackingService : LifecycleService() {
 
         val id = tripId
         val distance = tracker?.distanceMeters ?: 0.0
+        val topSpeed = tracker?.topSpeedMetersPerSecond?.takeIf { it > 0 }
         if (id != null) {
-            writeLock.withLock {
+            val kept = writeLock.withLock {
                 val endTime = repository.lastPoint(id)?.time ?: System.currentTimeMillis()
-                repository.finishTrip(id, endTime, distance, MIN_TRIP_METERS)
+                repository.finishTrip(id, endTime, distance, topSpeed, MIN_TRIP_METERS)
             }
+            if (kept) DriverCheck.ask(this, id, distance)
         }
         tripId = null
         tracker = null

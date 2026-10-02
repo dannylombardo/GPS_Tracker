@@ -3,6 +3,7 @@ package com.dannylombardo.gpstracker.tracking
 import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -20,7 +21,7 @@ data class Fix(
  * Turns a stream of GPS fixes into a trip distance, ignoring the noise that would
  * otherwise inflate it: inaccurate fixes, jitter while stopped, and impossible jumps.
  * It also tracks when the car last moved, so a drive can be ended if Android never
- * reports that we left the vehicle.
+ * reports that we left the vehicle, and the drive's top speed.
  */
 class TripDistanceTracker(
     startTimeMillis: Long,
@@ -36,12 +37,21 @@ class TripDistanceTracker(
     var lastMovementMillis: Long = startTimeMillis
         private set
 
+    /**
+     * Highest speed held across two fixes in a row. A single fix isn't enough,
+     * because GPS speed occasionally spikes for one reading.
+     */
+    var topSpeedMetersPerSecond: Double = 0.0
+        private set
+
     private var lastCounted: Fix? = null
     private var anchor: Fix? = null
+    private var previousSpeed: Double? = null
 
     /** Continues a trip that was already partly recorded. */
-    fun restore(distanceMeters: Double, lastFix: Fix?) {
+    fun restore(distanceMeters: Double, lastFix: Fix?, topSpeedMetersPerSecond: Double = 0.0) {
         this.distanceMeters = distanceMeters
+        this.topSpeedMetersPerSecond = topSpeedMetersPerSecond
         lastCounted = lastFix
         anchor = lastFix
         if (lastFix != null) lastMovementMillis = max(lastMovementMillis, lastFix.timeMillis)
@@ -53,6 +63,7 @@ class TripDistanceTracker(
 
         val previous = lastCounted
         if (previous == null) {
+            recordSpeed(fix.speedMetersPerSecond?.toDouble())
             lastCounted = fix
             anchor = fix
             lastMovementMillis = max(lastMovementMillis, fix.timeMillis)
@@ -64,8 +75,10 @@ class TripDistanceTracker(
         val step = distanceBetween(previous, fix)
         if (step / seconds > maxSpeedMetersPerSecond) return false
 
-        val currentAnchor = anchor ?: fix
         val speed = fix.speedMetersPerSecond
+        recordSpeed(speed?.toDouble() ?: if (step >= minStepMeters) step / seconds else null)
+
+        val currentAnchor = anchor ?: fix
         if (distanceBetween(currentAnchor, fix) >= movementRadiusMeters ||
             (speed != null && speed >= movingSpeedMetersPerSecond)
         ) {
@@ -77,6 +90,15 @@ class TripDistanceTracker(
         distanceMeters += step
         lastCounted = fix
         return true
+    }
+
+    private fun recordSpeed(speed: Double?) {
+        if (speed == null || speed > maxSpeedMetersPerSecond) {
+            previousSpeed = null
+            return
+        }
+        previousSpeed?.let { topSpeedMetersPerSecond = max(topSpeedMetersPerSecond, min(it, speed)) }
+        previousSpeed = speed
     }
 
     fun isStationary(nowMillis: Long, timeoutMillis: Long): Boolean =
