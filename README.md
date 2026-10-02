@@ -13,6 +13,23 @@ All data stays in an on-device database.
   without moving if that report never comes. You can also end it from the notification.
 - Trips under 500 m are dropped as false starts.
 
+## After a drive
+
+When a drive ends, a notification asks **Were you driving?** Tap **Me** or **Someone else**.
+Drives marked as someone else's stay in the list but are left out of your totals. If you
+ignore the question, the drive counts as yours; you can answer (or change your answer) any
+time by tapping the drive in the app.
+
+Each drive shows its average speed (distance over the whole time from start to end, stops
+included) and its top speed (the highest GPS speed held across two readings in a row, so a
+single glitchy reading doesn't count).
+
+## Weekly overview
+
+The home screen shows one week at a time, Monday to Sunday, with the arrows stepping back
+through earlier weeks: kilometres driven, number of drives, time behind the wheel, average and
+top speed, a bar for each day, and that week's drives.
+
 ## Installing
 
 Every push to a pull request builds a debug APK in GitHub Actions
