@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Trip::class, RoutePoint::class, FuelUp::class, Car::class], version = 4, exportSchema = true)
+@Database(entities = [Trip::class, RoutePoint::class, FuelUp::class, Car::class], version = 5, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun tripDao(): TripDao
 
@@ -58,6 +58,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Adds Recently deleted: a drive's bin date, null for every drive kept so far. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE trips ADD COLUMN deletedAt INTEGER")
+            }
+        }
+
         /** A fresh install starts with one car, ready to rename. */
         private val seedFirstCar = object : RoomDatabase.Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
@@ -75,7 +82,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "gps_tracker.db",
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .addCallback(seedFirstCar)
                     .build().also { instance = it }
             }

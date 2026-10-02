@@ -30,7 +30,6 @@ import androidx.compose.material.icons.rounded.PauseCircleOutline
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Timer
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -43,6 +42,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -63,6 +63,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dannylombardo.gpstracker.data.Car
+import com.dannylombardo.gpstracker.data.DriveBin
 import com.dannylombardo.gpstracker.data.RouteProfile
 import com.dannylombardo.gpstracker.data.SpeedBand
 import com.dannylombardo.gpstracker.data.SpeedRuns
@@ -74,6 +75,28 @@ import kotlinx.coroutines.withContext
 
 /** A drive's route, its speed colouring and profile, worked out once when its page opens. */
 private class RouteData(val points: List<LatLon>, val stretches: List<ColoredStretch>, val profile: RouteProfile)
+
+/** Shown on a drive that's in Recently deleted. */
+@Composable
+private fun BinnedNotice(deletedAt: Long) {
+    val days = DriveBin.daysLeft(deletedAt, System.currentTimeMillis())
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Delete, contentDescription = null)
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "In Recently deleted and left out of your totals. " +
+                    "It's removed for good in ${if (days == 1) "1 day" else "$days days"} unless you restore it.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
 
 /** Wraps the trip so "still loading" (no value yet) differs from "deleted" (null trip). */
 private class LoadedTrip(val trip: Trip?)
@@ -100,7 +123,6 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
             )
         }
     }
-    var confirmDelete by remember { mutableStateOf(false) }
     var fullMap by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val trip = loaded?.trip
@@ -116,8 +138,10 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
                     }
                 },
                 actions = {
-                    if (trip != null) {
-                        IconButton(onClick = { confirmDelete = true }) {
+                    if (trip?.deletedAt != null) {
+                        TextButton(onClick = { viewModel.restoreTrip(trip.id) }) { Text("Restore") }
+                    } else if (trip != null) {
+                        IconButton(onClick = { viewModel.moveToBin(trip.id) }) {
                             Icon(Icons.Outlined.Delete, contentDescription = "Delete drive")
                         }
                     }
@@ -133,7 +157,7 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
             loaded == null -> Unit
             trip == null -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text(
-                    "This drive was deleted.",
+                    "This drive was deleted for good.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -146,6 +170,7 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
                     .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
+                if (trip.deletedAt != null) BinnedNotice(trip.deletedAt)
                 MapPreview(route, onExpand = { fullMap = true })
                 Summary(trip)
                 Stats(trip, route?.profile)
@@ -162,27 +187,6 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
                 }
             }
         }
-    }
-
-    if (confirmDelete && trip != null) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            icon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
-            title = { Text("Delete this drive?") },
-            text = {
-                Text(
-                    "The ${formatKm(trip.distanceMeters)} drive and its route are removed for good. " +
-                        "To just leave it out of your totals, choose \"Someone else\" instead.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmDelete = false
-                    viewModel.deleteTrip(trip.id)
-                }) { Text("Delete") }
-            },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
-        )
     }
 
     val fullRoute = route

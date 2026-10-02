@@ -7,6 +7,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -36,7 +37,9 @@ import androidx.compose.material.icons.automirrored.rounded.HelpOutline
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.rounded.DirectionsCar
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
@@ -52,9 +55,13 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
@@ -64,6 +71,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.foundation.horizontalScroll
@@ -88,6 +96,7 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
     val viewedCarId by viewModel.viewedCarId.collectAsStateWithLifecycle()
     val activeCar by viewModel.activeCar.collectAsStateWithLifecycle()
     val weekByCar by viewModel.weekByCar.collectAsStateWithLifecycle()
+    val trips by viewModel.trips.collectAsStateWithLifecycle()
     // Car names only earn their space when several cars share one list.
     val showCarNames = cars.size > 1 && viewedCarId == null
     val carNames = cars.associate { it.id to it.name }
@@ -145,12 +154,14 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
             item { AnswerBanner(unanswered.size, onClick = { viewModel.openTrip(unanswered.first().id) }) }
         }
 
-        if (week.trips.isEmpty()) {
-            item { EmptyDrives(isCurrentWeek) }
+        val today = LocalDate.now()
+        val todayTrips = trips.filter { localDateOf(it.startTime) == today }
+        item(key = "today") { SectionHeader("Today") }
+        if (todayTrips.isEmpty()) {
+            item(key = "today-empty") { EmptyToday(hasOlderDrives = trips.isNotEmpty()) }
         } else {
-            week.trips.groupBy { localDateOf(it.startTime) }.forEach { (day, trips) ->
-                item(key = "day-$day") { SectionHeader(formatDayHeading(day)) }
-                items(trips, key = { "trip-${it.id}" }) { trip ->
+            items(todayTrips, key = { "trip-${it.id}" }) { trip ->
+                SwipeToBin(onBin = { viewModel.moveToBin(trip.id) }, modifier = Modifier.animateItem()) {
                     DriveRow(
                         trip,
                         carName = trip.carId?.let { carNames[it] }.takeIf { showCarNames },
@@ -158,6 +169,13 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
                         onClick = { viewModel.openTrip(trip.id) },
                     )
                 }
+            }
+        }
+        item(key = "see-all") {
+            FilledTonalButton(onClick = viewModel::openHistory, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("See all drives")
             }
         }
     }
@@ -309,7 +327,7 @@ private fun AnswerBanner(count: Int, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DriveRow(trip: Trip, carName: String?, viewModel: MainViewModel, onClick: () -> Unit) {
+internal fun DriveRow(trip: Trip, carName: String?, viewModel: MainViewModel, onClick: () -> Unit) {
     val end = trip.endTime ?: trip.startTime
     val route by produceState<List<LatLon>?>(null, trip.id) { value = viewModel.routePreview(trip.id) }
     Card(
@@ -376,9 +394,9 @@ internal fun Pill(text: String, container: Color, content: Color) {
 }
 
 @Composable
-private fun EmptyDrives(isCurrentWeek: Boolean) {
+private fun EmptyToday(hasOlderDrives: Boolean) {
     Column(
-        Modifier.fillMaxWidth().padding(vertical = 32.dp),
+        Modifier.fillMaxWidth().padding(vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -388,16 +406,58 @@ private fun EmptyDrives(isCurrentWeek: Boolean) {
             content = MaterialTheme.colorScheme.onSecondaryContainer,
             size = 64.dp,
         )
+        Text("No drives yet today", style = MaterialTheme.typography.titleMedium)
         Text(
-            if (isCurrentWeek) "No drives yet this week" else "No drives that week",
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            "Drives show up here as soon as they end.",
+            if (hasOlderDrives) "Today's drives show up here as soon as they end. Earlier ones are under All drives."
+            else "Drives show up here as soon as they end.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
     }
+}
+
+/**
+ * Swipe a drive either way to move it to Recently deleted. The red backing with a
+ * bin icon shows through as the row slides.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun SwipeToBin(onBin: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    // Past 40% of the row, so a sloppy scroll doesn't throw a drive away.
+    val state = rememberSwipeToDismissBoxState(positionalThreshold = { it * 0.4f })
+    val binned = state.currentValue != SwipeToDismissBoxValue.Settled
+    LaunchedEffect(binned) { if (binned) onBin() }
+    SwipeToDismissBox(
+        state = state,
+        modifier = modifier,
+        backgroundContent = {
+            val swiping = state.dismissDirection != SwipeToDismissBoxValue.Settled
+            val color by animateColorAsState(
+                if (swiping) MaterialTheme.colorScheme.errorContainer else Color.Transparent,
+                label = "swipe",
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clip(CardDefaults.shape)
+                    .background(color)
+                    .padding(horizontal = 24.dp),
+                contentAlignment = if (state.dismissDirection == SwipeToDismissBoxValue.StartToEnd) {
+                    Alignment.CenterStart
+                } else {
+                    Alignment.CenterEnd
+                },
+            ) {
+                if (swiping) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Outlined.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                        Text("Delete", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                    }
+                }
+            }
+        },
+    ) { content() }
 }
 
 /** Shown while a drive is being recorded, with a pulsing dot and the distance so far. */

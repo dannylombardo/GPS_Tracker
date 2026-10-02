@@ -23,7 +23,20 @@ class TripRepository(private val dao: TripDao) {
 
     suspend fun setCar(tripId: Long, carId: Long) = dao.setCar(tripId, carId)
 
+    fun observeBinnedTrips(): Flow<List<Trip>> = dao.observeBinnedTrips()
+
+    /** Moves a drive to Recently deleted, out of every list and total. */
+    suspend fun moveToBin(tripId: Long, now: Long) = dao.setDeletedAt(tripId, now)
+
+    suspend fun restore(tripId: Long) = dao.setDeletedAt(tripId, null)
+
+    /** Removes a drive and its route for good. */
     suspend fun deleteTrip(tripId: Long) = dao.deleteTrip(tripId)
+
+    suspend fun emptyBin() = dao.emptyBin()
+
+    /** Clears out drives that have sat in Recently deleted longer than [DriveBin.KEEP_DAYS]. */
+    suspend fun purgeExpired(now: Long) = dao.deleteBinnedBefore(DriveBin.expiryCutoff(now))
 
     suspend fun lastPoint(tripId: Long): RoutePoint? = dao.lastPoint(tripId)
 
