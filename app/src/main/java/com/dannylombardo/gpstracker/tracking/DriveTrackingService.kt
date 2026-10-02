@@ -18,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import com.dannylombardo.gpstracker.GpsTrackerApp
 import com.dannylombardo.gpstracker.R
 import com.dannylombardo.gpstracker.data.RoutePoint
+import com.dannylombardo.gpstracker.data.CarRepository
 import com.dannylombardo.gpstracker.data.TripRepository
 import com.dannylombardo.gpstracker.ui.MainActivity
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -126,7 +127,7 @@ class DriveTrackingService : LifecycleService() {
                 )
                 resumable.id
             } else {
-                repository.startTrip(now)
+                repository.startTrip(now, CarRepository.get(this@DriveTrackingService).activeCarId())
             }
         }
         tracker = newTracker

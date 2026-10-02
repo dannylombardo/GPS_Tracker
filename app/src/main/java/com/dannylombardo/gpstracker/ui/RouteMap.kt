@@ -16,7 +16,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.dannylombardo.gpstracker.data.SpeedBand
 import com.dannylombardo.gpstracker.ui.theme.RouteColors
+import com.dannylombardo.gpstracker.ui.theme.SpeedColors
 import org.osmdroid.config.Configuration
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
@@ -28,8 +30,19 @@ import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.TilesOverlay
 import java.io.File
 
+/** A piece of the route drawn in one colour. */
+internal data class ColoredStretch(val color: Color, val points: List<LatLon>)
+
+internal fun SpeedBand.color(): Color = when (this) {
+    SpeedBand.CRAWLING -> SpeedColors.crawling
+    SpeedBand.SLOW -> SpeedColors.slow
+    SpeedBand.FAST -> SpeedColors.fast
+    SpeedBand.FASTEST -> SpeedColors.fastest
+}
+
 /**
- * The drive's route over OpenStreetMap tiles (no API key). Tiles are only fetched
+ * The drive's route over OpenStreetMap tiles (no API key). With [stretches] the
+ * line is drawn in their colours (speed), otherwise in [routeColor]. Tiles are only fetched
  * while this map is on screen, and are cached in the app's own cache folder.
  * It pans and zooms; to keep a small preview still, cover it with something that
  * takes the touches.
@@ -40,6 +53,7 @@ internal fun RouteMap(
     routeColor: Color,
     dark: Boolean,
     modifier: Modifier = Modifier,
+    stretches: List<ColoredStretch>? = null,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -79,13 +93,14 @@ internal fun RouteMap(
             map.overlayManager.tilesOverlay.setColorFilter(if (dark) TilesOverlay.INVERT_COLORS else null)
             if (map.tag != points) {
                 map.tag = points
-                showRoute(map, points, routeColor, 4f * density.density)
+                val colored = stretches ?: listOf(ColoredStretch(routeColor, points))
+                showRoute(map, points, colored, 4f * density.density)
             }
         },
     )
 }
 
-private fun showRoute(map: MapView, points: List<LatLon>, color: Color, strokePx: Float) {
+private fun showRoute(map: MapView, points: List<LatLon>, stretches: List<ColoredStretch>, strokePx: Float) {
     map.overlays.clear()
     if (points.isEmpty()) return
     val geoPoints = points.map { GeoPoint(it.latitude, it.longitude) }
@@ -98,16 +113,19 @@ private fun showRoute(map: MapView, points: List<LatLon>, color: Color, strokePx
         outlinePaint.strokeJoin = Paint.Join.ROUND
         outlinePaint.isAntiAlias = true
     }
-    val line = Polyline(map).apply {
-        setPoints(geoPoints)
-        outlinePaint.color = color.toArgb()
-        outlinePaint.strokeWidth = strokePx
-        outlinePaint.strokeCap = Paint.Cap.ROUND
-        outlinePaint.strokeJoin = Paint.Join.ROUND
-        outlinePaint.isAntiAlias = true
-    }
     map.overlays.add(casing)
-    map.overlays.add(line)
+    stretches.filter { it.points.size >= 2 }.forEach { stretch ->
+        map.overlays.add(
+            Polyline(map).apply {
+                setPoints(stretch.points.map { GeoPoint(it.latitude, it.longitude) })
+                outlinePaint.color = stretch.color.toArgb()
+                outlinePaint.strokeWidth = strokePx
+                outlinePaint.strokeCap = Paint.Cap.ROUND
+                outlinePaint.strokeJoin = Paint.Join.ROUND
+                outlinePaint.isAntiAlias = true
+            },
+        )
+    }
     map.overlays.add(EndpointsOverlay(geoPoints.first(), geoPoints.last(), strokePx * 1.8f))
 
     val box = BoundingBox.fromGeoPointsSafe(geoPoints)

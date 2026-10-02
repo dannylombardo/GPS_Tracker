@@ -7,11 +7,13 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Trip::class, RoutePoint::class, FuelUp::class], version = 3, exportSchema = true)
+@Database(entities = [Trip::class, RoutePoint::class, FuelUp::class, Car::class], version = 4, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun tripDao(): TripDao
 
     abstract fun fuelUpDao(): FuelUpDao
+
+    abstract fun carDao(): CarDao
 
     companion object {
         /** Adds top speed and the "who was driving?" answer to trips. */
@@ -40,6 +42,29 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Adds cars. Every existing drive and fill-up moves into one starting car. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS cars (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "name TEXT NOT NULL)",
+                )
+                db.execSQL("INSERT INTO cars (id, name) VALUES (1, '${CarRepository.DEFAULT_NAME}')")
+                db.execSQL("ALTER TABLE trips ADD COLUMN carId INTEGER")
+                db.execSQL("ALTER TABLE fuel_ups ADD COLUMN carId INTEGER")
+                db.execSQL("UPDATE trips SET carId = 1")
+                db.execSQL("UPDATE fuel_ups SET carId = 1")
+            }
+        }
+
+        /** A fresh install starts with one car, ready to rename. */
+        private val seedFirstCar = object : RoomDatabase.Callback() {
+            override fun onCreate(db: SupportSQLiteDatabase) {
+                db.execSQL("INSERT INTO cars (id, name) VALUES (1, '${CarRepository.DEFAULT_NAME}')")
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -49,7 +74,10 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "gps_tracker.db",
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+                )
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addCallback(seedFirstCar)
+                    .build().also { instance = it }
             }
     }
 }

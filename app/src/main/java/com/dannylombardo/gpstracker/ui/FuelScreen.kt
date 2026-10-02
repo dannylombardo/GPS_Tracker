@@ -33,8 +33,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dannylombardo.gpstracker.data.Car
 import com.dannylombardo.gpstracker.data.FuelEconomy
 import com.dannylombardo.gpstracker.data.FuelUp
 import com.dannylombardo.gpstracker.ui.theme.HeroColors
@@ -44,8 +46,14 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padding: PaddingValues) {
-    val economy by viewModel.fuelEconomy.collectAsStateWithLifecycle()
-    val fuelUps by viewModel.allFuelUps.collectAsStateWithLifecycle()
+    val economyByCar by viewModel.economyByCar.collectAsStateWithLifecycle()
+    val consumption by viewModel.consumptionByFuelUp.collectAsStateWithLifecycle()
+    val fuelUps by viewModel.fuelUps.collectAsStateWithLifecycle()
+    val cars by viewModel.cars.collectAsStateWithLifecycle()
+    val viewedCarId by viewModel.viewedCarId.collectAsStateWithLifecycle()
+    // With one car, "all cars" is that car.
+    val shownCarId = viewedCarId ?: cars.singleOrNull()?.id
+    val carNames = cars.associate { it.id to it.name }
     val stationSpotting by viewModel.stationSpotting.collectAsStateWithLifecycle()
 
     LazyColumn(
@@ -60,7 +68,18 @@ internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padd
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { ScreenHeader("Fuel", "Your real consumption, full tank to full tank") }
-        item { EconomyCard(economy, fuelUps.firstOrNull()) }
+        item { CarFilterRow(cars, viewedCarId, onSelect = viewModel::viewCar, onManage = viewModel::openCars) }
+        item {
+            if (shownCarId != null) {
+                EconomyCard(
+                    economyByCar[shownCarId] ?: FuelEconomy.Summary(emptyList(), null),
+                    fuelUps.firstOrNull(),
+                    title = if (cars.size > 1) carNames[shownCarId] ?: "Fuel economy" else "Fuel economy",
+                )
+            } else {
+                AllCarsEconomyCard(cars, economyByCar, fuelUps)
+            }
+        }
         item {
             Button(onClick = { viewModel.openFuelUp() }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
                 Icon(Icons.Rounded.Add, contentDescription = null)
@@ -106,7 +125,12 @@ internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padd
                     }
                 }
                 items(inMonth, key = { "fuel-${it.id}" }) { fuelUp ->
-                    FuelUpRow(fuelUp, economy.byFuelUp[fuelUp.id], onClick = { viewModel.openFuelUp(fuelUp) })
+                    FuelUpRow(
+                        fuelUp,
+                        consumption[fuelUp.id],
+                        carName = fuelUp.carId?.let { carNames[it] }.takeIf { shownCarId == null },
+                        onClick = { viewModel.openFuelUp(fuelUp) },
+                    )
                 }
             }
         }
@@ -114,7 +138,7 @@ internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padd
 }
 
 @Composable
-private fun EconomyCard(economy: FuelEconomy.Summary, latest: FuelUp?) {
+private fun EconomyCard(economy: FuelEconomy.Summary, latest: FuelUp?, title: String) {
     val onHero = HeroColors.content
     Box(
         Modifier
@@ -123,7 +147,7 @@ private fun EconomyCard(economy: FuelEconomy.Summary, latest: FuelUp?) {
             .background(Brush.linearGradient(HeroColors.fuel)),
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Fuel economy", style = MaterialTheme.typography.titleMedium, color = onHero)
+            Text(title, style = MaterialTheme.typography.titleMedium, color = onHero)
             val average = economy.averageLitresPer100Km
             if (average != null) {
                 BigNumber(consumptionNumber(average), "L/100km", color = onHero, style = MaterialTheme.typography.displayLarge)
@@ -158,6 +182,49 @@ private fun EconomyCard(economy: FuelEconomy.Summary, latest: FuelUp?) {
     }
 }
 
+/** Every car's own L/100km side by side; they're never mixed, since cars burn fuel differently. */
+@Composable
+private fun AllCarsEconomyCard(cars: List<Car>, economyByCar: Map<Long, FuelEconomy.Summary>, fuelUps: List<FuelUp>) {
+    val onHero = HeroColors.content
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.large)
+            .background(Brush.linearGradient(HeroColors.fuel)),
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("Fuel economy by car", style = MaterialTheme.typography.titleMedium, color = onHero)
+            cars.forEach { car ->
+                val average = economyByCar[car.id]?.averageLitresPer100Km
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        car.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = onHero,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(bottom = 4.dp),
+                    )
+                    if (average != null) {
+                        BigNumber(consumptionNumber(average), "L/100km", color = onHero, style = MaterialTheme.typography.headlineLarge)
+                    } else {
+                        Text(
+                            "Needs 2 full tanks",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = onHero.copy(alpha = 0.75f),
+                            modifier = Modifier.padding(bottom = 4.dp),
+                        )
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                HeroStat("Spent, all cars", formatMoney(fuelUps.sumOf { it.totalCost }), onHero, Modifier.weight(1f))
+                HeroStat("Litres, all cars", formatLitres(fuelUps.sumOf { it.litres }), onHero, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
 @Composable
 private fun StationSpottingCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
@@ -185,7 +252,7 @@ private fun StationSpottingCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun FuelUpRow(fuelUp: FuelUp, litresPer100Km: Double?, onClick: () -> Unit) {
+internal fun FuelUpRow(fuelUp: FuelUp, litresPer100Km: Double?, carName: String? = null, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -202,7 +269,7 @@ internal fun FuelUpRow(fuelUp: FuelUp, litresPer100Km: Double?, onClick: () -> U
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(fuelUp.stationName ?: "Fill-up", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "${formatDayAndDate(fuelUp.time)}, ${formatTime(fuelUp.time)}",
+                    "${formatDayAndDate(fuelUp.time)}, ${formatTime(fuelUp.time)}" + (carName?.let { " · $it" } ?: ""),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
