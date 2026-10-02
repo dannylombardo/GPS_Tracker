@@ -46,13 +46,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.LocalDate
+import java.time.YearMonth
 
 private enum class Tab(val label: String, val selectedIcon: ImageVector, val icon: ImageVector) {
     Drives("Drives", Icons.Rounded.DirectionsCar, Icons.Outlined.DirectionsCar),
     Fuel("Fuel", Icons.Rounded.LocalGasStation, Icons.Outlined.LocalGasStation),
 }
 
-/** What fills the screen, deepest last: the tabs, All drives, the cars page or Recently deleted, a drive's page. */
+/** What fills the screen, deepest last: the tabs, All drives or All fill-ups, the cars page or Recently deleted, a drive's page. */
 private sealed interface Page {
     val depth: Int
 
@@ -61,6 +62,10 @@ private sealed interface Page {
     }
 
     data object AllDrives : Page {
+        override val depth = 1
+    }
+
+    data object AllFillUps : Page {
         override val depth = 1
     }
 
@@ -83,6 +88,7 @@ fun AppRoot(viewModel: MainViewModel) {
     val openTripId by viewModel.openTripId.collectAsStateWithLifecycle()
     val carsOpen by viewModel.carsOpen.collectAsStateWithLifecycle()
     val historyOpen by viewModel.historyOpen.collectAsStateWithLifecycle()
+    val fuelHistoryOpen by viewModel.fuelHistoryOpen.collectAsStateWithLifecycle()
     val binOpen by viewModel.binOpen.collectAsStateWithLifecycle()
     val cars by viewModel.cars.collectAsStateWithLifecycle()
     val fuelDraft by viewModel.fuelDraft.collectAsStateWithLifecycle()
@@ -92,18 +98,23 @@ fun AppRoot(viewModel: MainViewModel) {
     val fuelList = rememberLazyListState()
     val historyList = rememberLazyListState()
     val openedWeeks = remember { mutableStateMapOf<LocalDate, Boolean>() }
+    val fuelHistoryList = rememberLazyListState()
+    val openedMonths = remember { mutableStateMapOf<YearMonth, Boolean>() }
     val snackbar = remember { SnackbarHostState() }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
     LaunchedEffect(Unit) {
-        viewModel.binnedEvents.collect { tripId ->
+        viewModel.binnedEvents.collect { binned ->
             val result = snackbar.showSnackbar(
-                message = "Drive moved to Recently deleted",
+                message = when (binned) {
+                    is Binned.Drive -> "Drive moved to Recently deleted"
+                    is Binned.FillUp -> "Fill-up moved to Recently deleted"
+                },
                 actionLabel = "Undo",
                 withDismissAction = true,
                 duration = SnackbarDuration.Long,
             )
-            if (result == SnackbarResult.ActionPerformed) viewModel.restoreTrip(tripId)
+            if (result == SnackbarResult.ActionPerformed) viewModel.undo(binned)
         }
     }
 
@@ -111,6 +122,7 @@ fun AppRoot(viewModel: MainViewModel) {
         binOpen -> Page.Bin
         carsOpen -> Page.Cars
         historyOpen -> Page.AllDrives
+        fuelHistoryOpen -> Page.AllFillUps
         else -> Page.Tabs
     }
 
@@ -120,6 +132,7 @@ fun AppRoot(viewModel: MainViewModel) {
             Page.Bin -> viewModel.closeBin()
             Page.Cars -> viewModel.closeCars()
             Page.AllDrives -> viewModel.closeHistory()
+            Page.AllFillUps -> viewModel.closeFuelHistory()
             Page.Tabs -> Unit
         }
     }
@@ -144,6 +157,7 @@ fun AppRoot(viewModel: MainViewModel) {
                 is Page.Drive -> DriveDetailScreen(tripId = shownPage.tripId, viewModel = viewModel, onBack = viewModel::closeTrip)
                 Page.Cars -> CarsScreen(viewModel = viewModel, onBack = viewModel::closeCars)
                 Page.AllDrives -> AllDrivesScreen(viewModel, historyList, openedWeeks, onBack = viewModel::closeHistory)
+                Page.AllFillUps -> AllFillUpsScreen(viewModel, fuelHistoryList, openedMonths, onBack = viewModel::closeFuelHistory)
                 Page.Bin -> RecentlyDeletedScreen(viewModel, onBack = viewModel::closeBin)
                 Page.Tabs -> Scaffold(
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -185,7 +199,7 @@ fun AppRoot(viewModel: MainViewModel) {
             draft = draft,
             cars = cars,
             onSave = viewModel::saveFuelUp,
-            onDelete = { viewModel.deleteFuelUp(draft.id) },
+            onDelete = { viewModel.moveFuelUpToBin(draft.id) },
             onDismiss = viewModel::closeFuelUp,
         )
     }

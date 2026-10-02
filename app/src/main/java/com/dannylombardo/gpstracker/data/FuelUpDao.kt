@@ -17,6 +17,19 @@ interface FuelUpDao {
     @Query("DELETE FROM fuel_ups WHERE id = :id")
     suspend fun delete(id: Long)
 
-    @Query("SELECT * FROM fuel_ups ORDER BY time DESC")
+    @Query("UPDATE fuel_ups SET deletedAt = :deletedAt WHERE id = :id")
+    suspend fun setDeletedAt(id: Long, deletedAt: Long?)
+
+    @Query("DELETE FROM fuel_ups WHERE deletedAt IS NOT NULL AND deletedAt < :before")
+    suspend fun deleteBinnedBefore(before: Long)
+
+    @Query("DELETE FROM fuel_ups WHERE deletedAt IS NOT NULL")
+    suspend fun emptyBin()
+
+    /** Every fill-up except the ones in Recently deleted. */
+    @Query("SELECT * FROM fuel_ups WHERE deletedAt IS NULL ORDER BY time DESC")
     fun observeAll(): Flow<List<FuelUp>>
+
+    @Query("SELECT * FROM fuel_ups WHERE deletedAt IS NOT NULL ORDER BY deletedAt DESC")
+    fun observeBinned(): Flow<List<FuelUp>>
 }

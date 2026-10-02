@@ -57,13 +57,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.material3.SwipeToDismissBoxState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -71,6 +72,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -418,14 +420,20 @@ private fun EmptyToday(hasOlderDrives: Boolean) {
 }
 
 /**
- * Swipe a drive either way to move it to Recently deleted. The red backing with a
+ * Swipe a drive or fill-up either way to move it to Recently deleted. The red backing with a
  * bin icon shows through as the row slides.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SwipeToBin(onBin: () -> Unit, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    // Past 40% of the row, so a sloppy scroll doesn't throw a drive away.
-    val state = rememberSwipeToDismissBoxState(positionalThreshold = { it * 0.4f })
+    // Plain remember, not the saved state rememberSwipeToDismissBoxState keeps: a list
+    // brings saved state back when the same row returns, so after Undo the row would
+    // come back still swiped and delete itself again. Past 40% of the row, so a sloppy
+    // scroll doesn't throw anything away.
+    val density = LocalDensity.current
+    val state = remember {
+        SwipeToDismissBoxState(SwipeToDismissBoxValue.Settled, density, positionalThreshold = { it * 0.4f })
+    }
     val binned = state.currentValue != SwipeToDismissBoxValue.Settled
     LaunchedEffect(binned) { if (binned) onBin() }
     SwipeToDismissBox(
