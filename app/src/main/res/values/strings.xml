@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">GPS Tracker</string>
+    <string name="channel_tracking_name">Drive in progress</string>
+    <string name="channel_tracking_description">Shown while a drive is being recorded</string>
+</resources>
