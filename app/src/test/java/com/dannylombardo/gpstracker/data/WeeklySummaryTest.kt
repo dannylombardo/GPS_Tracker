@@ -76,4 +76,21 @@ class WeeklySummaryTest {
         val t = trip(1, LocalDateTime.of(2026, 9, 28, 8, 0), minutes = 45, km = 60.0)
         assertEquals(80.0, t.averageSpeedMetersPerSecond!! * 3.6, 0.01)
     }
+
+    @Test
+    fun moneySpentCountsThisWeeksFillUps() {
+        fun fill(id: Long, at: LocalDateTime, litres: Double, price: Double) =
+            FuelUp(id = id, time = at.atZone(zone).toInstant().toEpochMilli(), litres = litres, pricePerLitre = price)
+
+        val fuelUps = listOf(
+            fill(1, LocalDateTime.of(2026, 9, 27, 18, 0), 40.0, 1.5),
+            fill(2, LocalDateTime.of(2026, 9, 28, 8, 0), 40.0, 1.5),
+            fill(3, LocalDateTime.of(2026, 10, 4, 23, 30), 10.0, 1.6),
+            fill(4, LocalDateTime.of(2026, 10, 5, 0, 0), 30.0, 1.6),
+        )
+        val summary = WeeklySummary.of(emptyList(), weekStart, zone, fuelUps)
+        assertEquals(listOf(3L, 2L), summary.fuelUps.map { it.id })
+        assertEquals(76.0, summary.moneySpent, 1e-9)
+        assertEquals(50.0, summary.litresBought, 1e-9)
+    }
 }

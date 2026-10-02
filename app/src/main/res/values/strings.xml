@@ -4,4 +4,6 @@
     <string name="channel_tracking_description">Shown while a drive is being recorded</string>
     <string name="channel_driver_check_name">Who was driving?</string>
     <string name="channel_driver_check_description">Asks after each drive whether you were the driver</string>
+    <string name="channel_fuel_name">Fill-ups</string>
+    <string name="channel_fuel_description">Offers to log a fill-up after a drive stops at a gas station</string>
 </resources>

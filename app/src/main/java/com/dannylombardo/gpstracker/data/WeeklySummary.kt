@@ -6,7 +6,10 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.TemporalAdjusters
 
-/** What was driven in one Monday-to-Sunday week. Only drives that count as yours go into the totals. */
+/**
+ * What was driven and spent in one Monday-to-Sunday week. Only drives that count as
+ * yours go into the driving totals; every fill-up in the week counts towards money spent.
+ */
 data class WeeklySummary(
     val weekStart: LocalDate,
     /** Every finished drive that started this week, yours or not, newest first. */
@@ -21,7 +24,13 @@ data class WeeklySummary(
     val otherDriverCount: Int,
     /** Drives nobody has answered "who was driving?" for yet. */
     val unansweredCount: Int,
+    /** Fill-ups this week, newest first. */
+    val fuelUps: List<FuelUp> = emptyList(),
 ) {
+    val moneySpent: Double get() = fuelUps.sumOf { it.totalCost }
+
+    val litresBought: Double get() = fuelUps.sumOf { it.litres }
+
     val weekEnd: LocalDate get() = weekStart.plusDays(6)
 
     /** Total distance over total driving time. */
@@ -32,8 +41,13 @@ data class WeeklySummary(
         fun weekStartOf(date: LocalDate): LocalDate =
             date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
 
-        /** Summarises the drives in the week starting [weekStart], placing each drive by its start time. */
-        fun of(trips: List<Trip>, weekStart: LocalDate, zone: ZoneId): WeeklySummary {
+        /** Summarises the week starting [weekStart], placing each drive by its start time. */
+        fun of(
+            trips: List<Trip>,
+            weekStart: LocalDate,
+            zone: ZoneId,
+            fuelUps: List<FuelUp> = emptyList(),
+        ): WeeklySummary {
             val from = weekStart.atStartOfDay(zone).toInstant().toEpochMilli()
             val until = weekStart.plusWeeks(1).atStartOfDay(zone).toInstant().toEpochMilli()
             val inWeek = trips
@@ -57,6 +71,7 @@ data class WeeklySummary(
                 dailyDistanceMeters = daily,
                 otherDriverCount = inWeek.count { it.isMine == false },
                 unansweredCount = inWeek.count { it.isMine == null },
+                fuelUps = fuelUps.filter { it.time in from until until }.sortedByDescending { it.time },
             )
         }
     }
