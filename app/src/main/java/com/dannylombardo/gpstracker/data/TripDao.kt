@@ -22,6 +22,9 @@ interface TripDao {
     @Query("UPDATE trips SET isMine = :isMine WHERE id = :tripId")
     suspend fun setDriver(tripId: Long, isMine: Boolean)
 
+    @Query("UPDATE trips SET carId = :carId WHERE id = :tripId")
+    suspend fun setCar(tripId: Long, carId: Long)
+
     @Query("DELETE FROM trips WHERE id = :tripId")
     suspend fun deleteTrip(tripId: Long)
 
@@ -33,6 +36,9 @@ interface TripDao {
 
     @Query("SELECT * FROM route_points WHERE tripId = :tripId ORDER BY time")
     suspend fun routePoints(tripId: Long): List<RoutePoint>
+
+    @Query("SELECT * FROM trips WHERE id = :tripId")
+    suspend fun trip(tripId: Long): Trip?
 
     @Query("SELECT * FROM trips WHERE id = :tripId")
     fun observeTrip(tripId: Long): Flow<Trip?>

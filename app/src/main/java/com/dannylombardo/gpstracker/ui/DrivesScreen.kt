@@ -66,6 +66,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.rememberScrollState
+import com.dannylombardo.gpstracker.data.Car
 import com.dannylombardo.gpstracker.data.Trip
 import com.dannylombardo.gpstracker.data.WeeklySummary
 import com.dannylombardo.gpstracker.ui.theme.HeroColors
@@ -79,6 +84,13 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
     val activeTrip by viewModel.activeTrip.collectAsStateWithLifecycle()
     val permissions by viewModel.permissions.collectAsStateWithLifecycle()
     val autoTrack by viewModel.autoTrack.collectAsStateWithLifecycle()
+    val cars by viewModel.cars.collectAsStateWithLifecycle()
+    val viewedCarId by viewModel.viewedCarId.collectAsStateWithLifecycle()
+    val activeCar by viewModel.activeCar.collectAsStateWithLifecycle()
+    val weekByCar by viewModel.weekByCar.collectAsStateWithLifecycle()
+    // Car names only earn their space when several cars share one list.
+    val showCarNames = cars.size > 1 && viewedCarId == null
+    val carNames = cars.associate { it.id to it.name }
     val isCurrentWeek = viewModel.isCurrentWeek(week.weekStart)
 
     LazyColumn(
@@ -93,17 +105,27 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { ScreenHeader("Drives", formatDayAndDate(System.currentTimeMillis())) }
+        item { CarFilterRow(cars, viewedCarId, onSelect = viewModel::viewCar, onManage = viewModel::openCars) }
         if (!permissions.canAutoTrack) {
             item { SetupCard(permissions, onChanged = viewModel::refresh) }
         }
         item {
             val trip = activeTrip
             if (trip != null) {
-                LiveDriveCard(trip, onEndDrive = viewModel::endDrive)
+                LiveDriveCard(
+                    trip = trip,
+                    cars = cars,
+                    car = cars.firstOrNull { it.id == trip.carId },
+                    onPickCar = viewModel::setActiveCar,
+                    onEndDrive = viewModel::endDrive,
+                )
             } else {
                 TrackingCard(
                     autoTrack = autoTrack,
                     canAutoTrack = permissions.canAutoTrack,
+                    cars = cars,
+                    activeCar = activeCar,
+                    onPickCar = viewModel::setActiveCar,
                     onAutoTrackChange = viewModel::setAutoTrack,
                     onStartDrive = viewModel::startDrive,
                 )
@@ -113,6 +135,7 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
             WeekCard(
                 week = week,
                 isCurrentWeek = isCurrentWeek,
+                carSplit = weekByCar.takeIf { showCarNames },
                 onPrevious = viewModel::previousWeek,
                 onNext = viewModel::nextWeek,
             )
@@ -128,7 +151,12 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
             week.trips.groupBy { localDateOf(it.startTime) }.forEach { (day, trips) ->
                 item(key = "day-$day") { SectionHeader(formatDayHeading(day)) }
                 items(trips, key = { "trip-${it.id}" }) { trip ->
-                    DriveRow(trip, viewModel, onClick = { viewModel.openTrip(trip.id) })
+                    DriveRow(
+                        trip,
+                        carName = trip.carId?.let { carNames[it] }.takeIf { showCarNames },
+                        viewModel = viewModel,
+                        onClick = { viewModel.openTrip(trip.id) },
+                    )
                 }
             }
         }
@@ -140,6 +168,7 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
 private fun WeekCard(
     week: WeeklySummary,
     isCurrentWeek: Boolean,
+    carSplit: List<Pair<Car, Double>>?,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
 ) {
@@ -197,6 +226,7 @@ private fun WeekCard(
                 HeroStat("Spent on fuel", formatMoney(week.moneySpent), onHero, Modifier.weight(1f))
                 HeroStat("Litres", formatLitres(week.litresBought), onHero, Modifier.weight(1f))
             }
+            if (carSplit != null) CarSplit(carSplit, onHero)
             if (week.otherDriverCount > 0) {
                 Text(
                     "${week.otherDriverCount} driven by someone else, not counted",
@@ -207,6 +237,50 @@ private fun WeekCard(
         }
     }
 }
+
+/** How the week's kilometres split between cars: a stacked bar and each car's share. */
+@Composable
+private fun CarSplit(split: List<Pair<Car, Double>>, onHero: Color) {
+    val total = split.sumOf { it.second }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (total > 0) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(CircleShape)
+                    .background(onHero.copy(alpha = 0.12f)),
+            ) {
+                split.forEachIndexed { index, (_, meters) ->
+                    if (meters > 0) {
+                        Box(
+                            Modifier
+                                .weight((meters / total).toFloat())
+                                .fillMaxHeight()
+                                .background(onHero.copy(alpha = carShadeAlpha(index))),
+                        )
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            split.forEachIndexed { index, (car, meters) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).background(onHero.copy(alpha = carShadeAlpha(index)), CircleShape))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "${car.name} ${formatKm(meters)}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = onHero.copy(alpha = 0.9f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Successive cars get lighter shades of the card's text colour. */
+private fun carShadeAlpha(index: Int): Float = (0.95f - index * 0.25f).coerceAtLeast(0.3f)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -235,7 +309,7 @@ private fun AnswerBanner(count: Int, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DriveRow(trip: Trip, viewModel: MainViewModel, onClick: () -> Unit) {
+private fun DriveRow(trip: Trip, carName: String?, viewModel: MainViewModel, onClick: () -> Unit) {
     val end = trip.endTime ?: trip.startTime
     val route by produceState<List<LatLon>?>(null, trip.id) { value = viewModel.routePreview(trip.id) }
     Card(
@@ -269,7 +343,8 @@ private fun DriveRow(trip: Trip, viewModel: MainViewModel, onClick: () -> Unit) 
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    "${formatDuration(end - trip.startTime)} · avg ${formatSpeed(trip.averageSpeedMetersPerSecond)}",
+                    "${formatDuration(end - trip.startTime)} · avg ${formatSpeed(trip.averageSpeedMetersPerSecond)}" +
+                        (carName?.let { " · $it" } ?: ""),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -327,7 +402,7 @@ private fun EmptyDrives(isCurrentWeek: Boolean) {
 
 /** Shown while a drive is being recorded, with a pulsing dot and the distance so far. */
 @Composable
-private fun LiveDriveCard(trip: Trip, onEndDrive: () -> Unit) {
+private fun LiveDriveCard(trip: Trip, cars: List<Car>, car: Car?, onPickCar: (Long) -> Unit, onEndDrive: () -> Unit) {
     val onHero = HeroColors.content
     val pulse = rememberInfiniteTransition(label = "recording")
     val dotAlpha by pulse.animateFloat(
@@ -360,6 +435,9 @@ private fun LiveDriveCard(trip: Trip, onEndDrive: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = onHero.copy(alpha = 0.8f),
             )
+            if (cars.size > 1) {
+                ActiveCarPicker("In", cars, car, onPick = onPickCar, color = onHero, modifier = Modifier.offset(x = (-8).dp))
+            }
             Button(
                 onClick = onEndDrive,
                 colors = ButtonDefaults.buttonColors(containerColor = onHero, contentColor = HeroColors.live.last()),
@@ -376,6 +454,9 @@ private fun LiveDriveCard(trip: Trip, onEndDrive: () -> Unit) {
 private fun TrackingCard(
     autoTrack: Boolean,
     canAutoTrack: Boolean,
+    cars: List<Car>,
+    activeCar: Car?,
+    onPickCar: (Long) -> Unit,
     onAutoTrackChange: (Boolean) -> Unit,
     onStartDrive: () -> Unit,
 ) {
@@ -406,10 +487,15 @@ private fun TrackingCard(
                 }
                 Switch(checked = on, enabled = canAutoTrack, onCheckedChange = onAutoTrackChange)
             }
-            TextButton(onClick = onStartDrive, enabled = canAutoTrack, modifier = Modifier.padding(start = 42.dp)) {
-                Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Start a drive now")
+            Column(Modifier.padding(start = 42.dp)) {
+                if (cars.size > 1) {
+                    ActiveCarPicker("Drives go to", cars, activeCar, onPick = onPickCar)
+                }
+                TextButton(onClick = onStartDrive, enabled = canAutoTrack) {
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Start a drive now")
+                }
             }
         }
     }

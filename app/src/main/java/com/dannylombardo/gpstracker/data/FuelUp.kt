@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
  * One visit to the pump. [isFullTank] matters for L/100km: consumption is only
  * worked out between two fill-ups that both topped the tank right up.
  * [tripId] is the drive that stopped at the station, when the app spotted it.
+ * [carId] is the car that was filled, and only that car's drives count towards its L/100km.
  */
 @Entity(tableName = "fuel_ups")
 data class FuelUp(
@@ -19,6 +20,7 @@ data class FuelUp(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val tripId: Long? = null,
+    val carId: Long? = null,
 ) {
     val totalCost: Double get() = litres * pricePerLitre
 }
