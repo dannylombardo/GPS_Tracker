@@ -26,12 +26,15 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 
 /**
@@ -43,6 +46,9 @@ import java.util.Locale
  *   (so a long red light or a drive-through doesn't split a trip), or
  * - the car hasn't moved for [STATIONARY_TIMEOUT_MS], in case the exit event never comes, or
  * - the drive is ended by hand.
+ *
+ * Once a drive ends, its stops are checked against OpenStreetMap's gas stations so
+ * a fill-up can be logged.
  */
 class DriveTrackingService : LifecycleService() {
 
@@ -213,11 +219,14 @@ class DriveTrackingService : LifecycleService() {
         val distance = tracker?.distanceMeters ?: 0.0
         val topSpeed = tracker?.topSpeedMetersPerSecond?.takeIf { it > 0 }
         if (id != null) {
-            val kept = writeLock.withLock {
-                val endTime = repository.lastPoint(id)?.time ?: System.currentTimeMillis()
-                repository.finishTrip(id, endTime, distance, topSpeed, MIN_TRIP_METERS)
+            val (kept, route) = writeLock.withLock {
+                val route = repository.routePoints(id).map { it.toFix() }
+                val endTime = route.lastOrNull()?.timeMillis ?: System.currentTimeMillis()
+                repository.finishTrip(id, endTime, distance, topSpeed, MIN_TRIP_METERS) to route
             }
             if (kept) DriverCheck.ask(this, id, distance)
+            // Even a drive too short to keep may have been a hop to the gas station.
+            checkForGasStation(if (kept) id else null, route)
         }
         tripId = null
         tracker = null
@@ -233,6 +242,22 @@ class DriveTrackingService : LifecycleService() {
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         DriveState.isServiceRunning = false
         stopSelf()
+    }
+
+    /**
+     * Asks OpenStreetMap whether any stop on the drive was at a gas station, and if so
+     * offers to log the fill-up. One small request per drive, made while we're still
+     * in the foreground; a failed or slow lookup just means no prompt.
+     */
+    private suspend fun checkForGasStation(tripId: Long?, route: List<Fix>) {
+        if (!TrackingPrefs.isStationSpottingEnabled(this)) return
+        val stops = StopFinder.find(route)
+        if (stops.isEmpty()) return
+        val stations = withTimeoutOrNull(STATION_LOOKUP_TIMEOUT_MS) {
+            withContext(Dispatchers.IO) { GasStations.fetchNear(stops) }
+        } ?: return
+        val visit = GasStations.match(stops, stations) ?: return
+        FuelPrompt.show(this, tripId ?: -1, visit)
     }
 
     override fun onDestroy() {
@@ -311,6 +336,7 @@ class DriveTrackingService : LifecycleService() {
         private const val STATIONARY_TIMEOUT_MS = 10 * 60_000L
         private const val RESUME_WINDOW_MS = 10 * 60_000L
         private const val WATCHDOG_INTERVAL_MS = 30_000L
+        private const val STATION_LOOKUP_TIMEOUT_MS = 40_000L
 
         fun vehicleEntered(context: Context) = send(context, ACTION_START)
 

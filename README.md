@@ -28,7 +28,25 @@ single glitchy reading doesn't count).
 
 The home screen shows one week at a time, Monday to Sunday, with the arrows stepping back
 through earlier weeks: kilometres driven, number of drives, time behind the wheel, average and
-top speed, a bar for each day, and that week's drives.
+top speed, money spent on fuel, a bar for each day, and that week's fill-ups and drives.
+
+## Fill-ups and real L/100km
+
+When a drive ends, the app looks at where the car sat still (the end of the drive, plus any
+pause of two minutes or more along the way) and asks OpenStreetMap's public Overpass API
+whether any of those spots is a gas station. Only those coordinates are sent, once per drive,
+with no account or key. If one matches, a notification asks **Filled up at …?**; tap it to
+enter the litres and the price per litre. You can turn this off on the home screen, and
+**Add fill-up** logs one by hand (with a date and time picker) if a stop is missed.
+
+Consumption is measured full tank to full tank: the litres it takes to fill right up again,
+plus any part fills in between, divided by the distance of your drives since the previous full
+tank. Drives marked as someone else's are left out of that distance. The first full tank only
+starts the count, so the number appears after your second full fill-up. The home screen shows
+the overall average, and each fill-up shows the L/100km of the stretch it closed.
+
+The weekly overview adds money spent on fuel, litres bought and number of fill-ups for that week.
+Tap a fill-up to edit or delete it.
 
 ## Installing
 

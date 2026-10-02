@@ -18,11 +18,18 @@ class GpsTrackerApp : Application() {
             getString(R.string.channel_driver_check_name),
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply { description = getString(R.string.channel_driver_check_description) }
-        getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(tracking, driverCheck))
+        val fuel = NotificationChannel(
+            CHANNEL_FUEL,
+            getString(R.string.channel_fuel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply { description = getString(R.string.channel_fuel_description) }
+        getSystemService(NotificationManager::class.java)
+            .createNotificationChannels(listOf(tracking, driverCheck, fuel))
     }
 
     companion object {
         const val CHANNEL_TRACKING = "drive_tracking"
         const val CHANNEL_DRIVER_CHECK = "driver_check"
+        const val CHANNEL_FUEL = "fuel_up"
     }
 }

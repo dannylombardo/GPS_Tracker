@@ -68,6 +68,9 @@ fun HomeScreen(viewModel: MainViewModel = viewModel()) {
     val activeTrip by viewModel.activeTrip.collectAsStateWithLifecycle()
     val permissions by viewModel.permissions.collectAsStateWithLifecycle()
     val autoTrack by viewModel.autoTrack.collectAsStateWithLifecycle()
+    val fuelEconomy by viewModel.fuelEconomy.collectAsStateWithLifecycle()
+    val fuelDraft by viewModel.fuelDraft.collectAsStateWithLifecycle()
+    val stationSpotting by viewModel.stationSpotting.collectAsStateWithLifecycle()
     var askingTrip by remember { mutableStateOf<Trip?>(null) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
@@ -99,6 +102,24 @@ fun HomeScreen(viewModel: MainViewModel = viewModel()) {
                     onNext = viewModel::nextWeek,
                 )
             }
+            item {
+                FuelCard(
+                    economy = fuelEconomy,
+                    stationSpotting = stationSpotting,
+                    onAddFuelUp = { viewModel.openFuelUp() },
+                    onStationSpottingChange = viewModel::setStationSpotting,
+                )
+            }
+            if (week.fuelUps.isNotEmpty()) {
+                item { Text("Fill-ups", style = MaterialTheme.typography.titleMedium) }
+                items(week.fuelUps, key = { "fuel-${it.id}" }) { fuelUp ->
+                    FuelUpRow(
+                        fuelUp = fuelUp,
+                        litresPer100Km = fuelEconomy.byFuelUp[fuelUp.id],
+                        onClick = { viewModel.openFuelUp(fuelUp) },
+                    )
+                }
+            }
             if (week.trips.isEmpty()) {
                 item {
                     Text(
@@ -109,7 +130,7 @@ fun HomeScreen(viewModel: MainViewModel = viewModel()) {
                 }
             } else {
                 item { Text("Drives", style = MaterialTheme.typography.titleMedium) }
-                items(week.trips, key = { it.id }) { trip ->
+                items(week.trips, key = { "trip-${it.id}" }) { trip ->
                     TripRow(trip, onClick = { askingTrip = trip })
                 }
             }
@@ -124,6 +145,15 @@ fun HomeScreen(viewModel: MainViewModel = viewModel()) {
                 askingTrip = null
             },
             onDismiss = { askingTrip = null },
+        )
+    }
+
+    fuelDraft?.let { draft ->
+        FuelUpDialog(
+            draft = draft,
+            onSave = viewModel::saveFuelUp,
+            onDelete = { viewModel.deleteFuelUp(draft.id) },
+            onDismiss = viewModel::closeFuelUp,
         )
     }
 }
@@ -169,6 +199,12 @@ private fun WeekCard(
                 Stat("Top speed", formatSpeed(week.topSpeedMetersPerSecond), Modifier.weight(1f))
             }
 
+            Row(Modifier.fillMaxWidth()) {
+                Stat("Spent on fuel", formatMoney(week.moneySpent), Modifier.weight(1f))
+                Stat("Litres", formatLitres(week.litresBought), Modifier.weight(1f))
+                Stat("Fill-ups", week.fuelUps.size.toString(), Modifier.weight(1f))
+            }
+
             DailyBars(week.dailyDistanceMeters)
 
             val notes = buildList {
@@ -191,7 +227,7 @@ private fun WeekCard(
 }
 
 @Composable
-private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
+internal fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, style = MaterialTheme.typography.titleSmall)
         Text(
@@ -386,12 +422,12 @@ private fun TripRow(trip: Trip, onClick: () -> Unit) {
     }
 }
 
-private fun formatKm(meters: Double) = String.format(Locale.getDefault(), "%.1f km", meters / 1000)
+internal fun formatKm(meters: Double) = String.format(Locale.getDefault(), "%.1f km", meters / 1000)
 
-private fun formatDate(millis: Long): String =
+internal fun formatDate(millis: Long): String =
     DateFormat.getDateInstance(DateFormat.FULL).format(Date(millis))
 
-private fun formatTime(millis: Long): String =
+internal fun formatTime(millis: Long): String =
     DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
 
 private fun formatShortDate(date: LocalDate): String =

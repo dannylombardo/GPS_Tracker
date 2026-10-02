@@ -7,9 +7,11 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Trip::class, RoutePoint::class], version = 2, exportSchema = true)
+@Database(entities = [Trip::class, RoutePoint::class, FuelUp::class], version = 3, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun tripDao(): TripDao
+
+    abstract fun fuelUpDao(): FuelUpDao
 
     companion object {
         /** Adds top speed and the "who was driving?" answer to trips. */
@@ -17,6 +19,24 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE trips ADD COLUMN topSpeedMetersPerSecond REAL")
                 db.execSQL("ALTER TABLE trips ADD COLUMN isMine INTEGER")
+            }
+        }
+
+        /** Adds fill-ups at the pump. Existing drives are untouched. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS fuel_ups (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "time INTEGER NOT NULL, " +
+                        "litres REAL NOT NULL, " +
+                        "pricePerLitre REAL NOT NULL, " +
+                        "isFullTank INTEGER NOT NULL, " +
+                        "stationName TEXT, " +
+                        "latitude REAL, " +
+                        "longitude REAL, " +
+                        "tripId INTEGER)",
+                )
             }
         }
 
@@ -29,7 +49,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "gps_tracker.db",
-                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
             }
     }
 }
