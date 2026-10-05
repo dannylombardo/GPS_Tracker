@@ -80,4 +80,37 @@ class RouteProfileTest {
         assertEquals(points.first(), thinned.first())
         assertEquals(points.last(), thinned.last())
     }
+
+    @Test
+    fun `speed at a moment is read off the line between samples`() {
+        val profile = RouteProfile(
+            speeds = listOf(
+                RouteProfile.SpeedSample(0, 10.0),
+                RouteProfile.SpeedSample(10_000, 20.0),
+                RouteProfile.SpeedSample(20_000, 0.0),
+            ),
+            movingMillis = 20_000,
+            stoppedMillis = 0,
+        )
+
+        assertEquals(10.0, profile.speedAt(-5_000), 0.001)
+        assertEquals(15.0, profile.speedAt(5_000), 0.001)
+        assertEquals(20.0, profile.speedAt(10_000), 0.001)
+        assertEquals(5.0, profile.speedAt(17_500), 0.001)
+        assertEquals(0.0, profile.speedAt(99_000), 0.001)
+    }
+
+    @Test
+    fun `position glides between fixes`() {
+        val points = listOf(point(0.0, 0), point(100.0, 10), point(300.0, 20))
+
+        val halfway = RouteProfile.positionAt(points, 5_000)!!
+        val later = RouteProfile.positionAt(points, 15_000)!!
+
+        assertEquals(points[0].latitude + (points[1].latitude - points[0].latitude) / 2, halfway.latitude, 1e-9)
+        assertEquals(points[1].latitude + (points[2].latitude - points[1].latitude) / 2, later.latitude, 1e-9)
+        assertEquals(points.first().latitude, RouteProfile.positionAt(points, -1)!!.latitude, 1e-9)
+        assertEquals(points.last().latitude, RouteProfile.positionAt(points, 60_000)!!.latitude, 1e-9)
+        assertEquals(null, RouteProfile.positionAt(emptyList(), 0))
+    }
 }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -42,6 +43,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -64,17 +66,36 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dannylombardo.gpstracker.data.Car
 import com.dannylombardo.gpstracker.data.DriveBin
+import com.dannylombardo.gpstracker.data.RoutePoint
 import com.dannylombardo.gpstracker.data.RouteProfile
 import com.dannylombardo.gpstracker.data.SpeedBand
 import com.dannylombardo.gpstracker.data.SpeedRuns
 import com.dannylombardo.gpstracker.data.Trip
 import com.dannylombardo.gpstracker.ui.theme.RouteColors
+import com.dannylombardo.gpstracker.ui.theme.tabular
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 /** A drive's route, its speed colouring and profile, worked out once when its page opens. */
-private class RouteData(val points: List<LatLon>, val stretches: List<ColoredStretch>, val profile: RouteProfile)
+private class RouteData(
+    val points: List<LatLon>,
+    val stretches: List<ColoredStretch>,
+    val profile: RouteProfile,
+    /** The fixes in time order, for finding where the car was at a moment. */
+    val fixes: List<RoutePoint>,
+) {
+    /** Whether there's enough of a speed trace to slide along. */
+    val canScrub: Boolean get() = profile.speeds.size >= 2 && points.size >= 2
+
+    /** Where the car was at [time], marked in its speed colour with the speed. */
+    fun markerAt(time: Long?): MapMarker? {
+        if (time == null) return null
+        val position = RouteProfile.positionAt(fixes, time) ?: return null
+        val speed = profile.speedAt(time)
+        return MapMarker(LatLon(position.latitude, position.longitude), SpeedBand.of(speed).color(), formatSpeed(speed))
+    }
+}
 
 /** Shown on a drive that's in Recently deleted. */
 @Composable
@@ -115,6 +136,7 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
         val points = viewModel.routePoints(tripId)
         value = withContext(Dispatchers.Default) {
             RouteData(
+                fixes = points.sortedBy { it.time },
                 points = points.map { LatLon(it.latitude, it.longitude) },
                 stretches = SpeedRuns.of(points).map { run ->
                     ColoredStretch(run.band.color(), run.points.map { LatLon(it.latitude, it.longitude) })
@@ -124,6 +146,8 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
         }
     }
     var fullMap by remember { mutableStateOf(false) }
+    // The moment picked on the speed chart or the map slider; both show it and both move it.
+    var selectedTime by remember(tripId) { mutableStateOf<Long?>(null) }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val trip = loaded?.trip
 
@@ -171,10 +195,22 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 if (trip.deletedAt != null) BinnedNotice(trip.deletedAt)
-                MapPreview(route, onExpand = { fullMap = true })
+                MapPreview(
+                    route,
+                    selectedTime = selectedTime,
+                    onSelect = { selectedTime = it },
+                    onExpand = { fullMap = true },
+                )
                 Summary(trip)
                 Stats(trip, route?.profile)
-                route?.profile?.takeIf { it.speeds.size >= 2 }?.let { SpeedCard(it) }
+                route?.profile?.takeIf { it.speeds.size >= 2 }?.let { profile ->
+                    SpeedCard(
+                        profile,
+                        selectedTime = selectedTime,
+                        onSelect = { selectedTime = it },
+                        onClear = { selectedTime = null },
+                    )
+                }
                 DriverCard(trip, onAnswer = { viewModel.setDriver(trip.id, it) })
                 if (cars.size > 1) {
                     CarCard(cars, trip.carId, onPick = { viewModel.setTripCar(trip.id, it) })
@@ -191,12 +227,27 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
 
     val fullRoute = route
     if (fullMap && fullRoute != null) {
-        FullScreenMap(fullRoute, onClose = { fullMap = false })
+        FullScreenMap(
+            fullRoute,
+            selectedTime = selectedTime,
+            onSelect = { selectedTime = it },
+            onClose = { fullMap = false },
+        )
     }
 }
 
 @Composable
-private fun MapPreview(route: RouteData?, onExpand: () -> Unit) {
+private fun MapPreview(route: RouteData?, selectedTime: Long?, onSelect: (Long) -> Unit, onExpand: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        MapBox(route, selectedTime, onExpand)
+        if (route != null && route.canScrub) {
+            DriveSlider(route.profile, selectedTime, onSelect)
+        }
+    }
+}
+
+@Composable
+private fun MapBox(route: RouteData?, selectedTime: Long?, onExpand: () -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -222,6 +273,7 @@ private fun MapPreview(route: RouteData?, onExpand: () -> Unit) {
                     dark = isSystemInDarkTheme(),
                     modifier = Modifier.fillMaxSize(),
                     stretches = route.stretches,
+                    marker = route.markerAt(selectedTime),
                 )
                 // Keeps the preview still while the page scrolls; a tap opens the full map.
                 Box(Modifier.matchParentSize().clickable(onClick = onExpand))
@@ -239,7 +291,7 @@ private fun MapPreview(route: RouteData?, onExpand: () -> Unit) {
 }
 
 @Composable
-private fun FullScreenMap(route: RouteData, onClose: () -> Unit) {
+private fun FullScreenMap(route: RouteData, selectedTime: Long?, onSelect: (Long) -> Unit, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
             RouteMap(
@@ -248,6 +300,7 @@ private fun FullScreenMap(route: RouteData, onClose: () -> Unit) {
                 dark = isSystemInDarkTheme(),
                 modifier = Modifier.fillMaxSize(),
                 stretches = route.stretches,
+                marker = route.markerAt(selectedTime),
             )
             SpeedLegend(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp))
             FilledTonalIconButton(
@@ -256,8 +309,70 @@ private fun FullScreenMap(route: RouteData, onClose: () -> Unit) {
             ) {
                 Icon(Icons.Rounded.Close, contentDescription = "Close map")
             }
-            MapAttribution(Modifier.align(Alignment.BottomStart))
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding()) {
+                MapAttribution()
+                if (route.canScrub) {
+                    Surface(
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        shadowElevation = 4.dp,
+                        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                    ) {
+                        DriveSlider(route.profile, selectedTime, onSelect, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
+                    }
+                }
+            }
         }
+    }
+}
+
+/**
+ * A slider along the drive, start to end. Dragging it moves a marker along the route
+ * showing the speed there, and moves the line on the speed chart with it.
+ */
+@Composable
+private fun DriveSlider(
+    profile: RouteProfile,
+    selectedTime: Long?,
+    onSelect: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val start = profile.speeds.first().time
+    val end = profile.speeds.last().time
+    val span = (end - start).coerceAtLeast(1)
+    val fraction = selectedTime?.let { ((it - start).toFloat() / span).coerceIn(0f, 1f) } ?: 0f
+    Column(modifier) {
+        if (selectedTime != null) {
+            MomentReadout(profile, selectedTime)
+        } else {
+            Text(
+                "Slide to see your speed anywhere on the route",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp),
+            )
+        }
+        Slider(
+            value = fraction,
+            onValueChange = { onSelect(start + (it * span).toLong()) },
+        )
+    }
+}
+
+/** The speed at a picked moment, with its speed colour, and the time. */
+@Composable
+private fun MomentReadout(profile: RouteProfile, time: Long, modifier: Modifier = Modifier) {
+    val speed = profile.speedAt(time)
+    Row(modifier.padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(10.dp).background(SpeedBand.of(speed).color(), CircleShape))
+        Spacer(Modifier.width(8.dp))
+        Text(formatSpeed(speed), style = MaterialTheme.typography.titleMedium.tabular())
+        Spacer(Modifier.width(8.dp))
+        Text(
+            formatTimeWithSeconds(time),
+            style = MaterialTheme.typography.bodyMedium.tabular(),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -373,15 +488,23 @@ private fun Stats(trip: Trip, profile: RouteProfile?) {
     }
 }
 
+/** The speed chart. Tap or drag across it to read the speed at any moment, like a stock chart. */
 @Composable
-private fun SpeedCard(profile: RouteProfile) {
+private fun SpeedCard(profile: RouteProfile, selectedTime: Long?, onSelect: (Long) -> Unit, onClear: () -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text("Speed", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Text("km/h", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (selectedTime != null) {
+                    MomentReadout(profile, selectedTime, Modifier.weight(1f))
+                    IconButton(onClick = onClear, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Rounded.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                    }
+                } else {
+                    Text("Speed", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Text("km/h", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            SpeedChart(profile)
+            SpeedChart(profile, selectedTime = selectedTime, onSelect = onSelect)
             Row {
                 Text(
                     formatTime(profile.speeds.first().time),

@@ -5,6 +5,9 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,9 +22,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -30,6 +36,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -43,7 +50,7 @@ import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.max
 
-/** Kilometres per day, Monday to Sunday, as rounded bars that grow in. */
+/** Kilometres per day, Monday to Sunday, as rounded bars that grow in. Tapping a day calls [onDayClick] with its index. */
 @Composable
 internal fun WeekBars(
     dailyMeters: List<Double>,
@@ -52,6 +59,7 @@ internal fun WeekBars(
     trackColor: Color,
     labelColor: Color,
     modifier: Modifier = Modifier,
+    onDayClick: ((Int) -> Unit)? = null,
 ) {
     val max = dailyMeters.maxOrNull()?.takeIf { it > 0 } ?: 1.0
     val days = remember { DayOfWeek.entries.map { it.getDisplayName(TextStyle.NARROW, Locale.getDefault()) } }
@@ -69,7 +77,17 @@ internal fun WeekBars(
         dailyMeters.forEachIndexed { index, meters ->
             val isToday = index == todayIndex
             Column(
-                Modifier.weight(1f).fillMaxHeight(),
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(10.dp))
+                    .then(
+                        if (onDayClick != null) {
+                            Modifier.clickable(onClickLabel = "Open ${days[index]}") { onDayClick(index) }
+                        } else {
+                            Modifier
+                        },
+                    ),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Bottom,
             ) {
@@ -107,9 +125,18 @@ internal fun WeekBars(
     }
 }
 
-/** Speed over the drive, with faint lines every 20 or 40 km/h and the top speed marked. */
+/**
+ * Speed over the drive, with faint lines every 20 or 40 km/h and the top speed marked.
+ * Like a stock chart, tapping or dragging across it picks a moment ([onSelect] gets its
+ * time), and [selectedTime] is marked with a line and a dot on the speed.
+ */
 @Composable
-internal fun SpeedChart(profile: RouteProfile, modifier: Modifier = Modifier) {
+internal fun SpeedChart(
+    profile: RouteProfile,
+    modifier: Modifier = Modifier,
+    selectedTime: Long? = null,
+    onSelect: ((Long) -> Unit)? = null,
+) {
     val samples = profile.speeds
     if (samples.size < 2) return
     val line = MaterialTheme.colorScheme.primary
@@ -122,8 +149,31 @@ internal fun SpeedChart(profile: RouteProfile, modifier: Modifier = Modifier) {
     val maxKmh = max(stepKmh * 2, ceil(topKmh / stepKmh) * stepKmh)
     val startTime = samples.first().time
     val span = (samples.last().time - startTime).coerceAtLeast(1).toFloat()
+    val cursor = MaterialTheme.colorScheme.onSurface
+    val cursorRing = MaterialTheme.colorScheme.surfaceContainerLow
+    val currentOnSelect by rememberUpdatedState(onSelect)
+    // The width isn't known until layout, so the gestures read it from the pointer area.
+    fun timeAt(x: Float, width: Int): Long =
+        startTime + ((x / width.coerceAtLeast(1)).coerceIn(0f, 1f) * span).toLong()
 
-    Canvas(modifier.fillMaxWidth().height(180.dp)) {
+    val touch = if (onSelect == null) {
+        Modifier
+    } else {
+        Modifier
+            .pointerInput(samples) {
+                detectTapGestures { currentOnSelect?.invoke(timeAt(it.x, size.width)) }
+            }
+            .pointerInput(samples) {
+                detectHorizontalDragGestures(
+                    onDragStart = { currentOnSelect?.invoke(timeAt(it.x, size.width)) },
+                ) { change, _ ->
+                    change.consume()
+                    currentOnSelect?.invoke(timeAt(change.position.x, size.width))
+                }
+            }
+    }
+
+    Canvas(modifier.fillMaxWidth().height(180.dp).then(touch)) {
         val chartTop = 8.dp.toPx()
         val chartHeight = size.height - chartTop
         fun x(time: Long) = (time - startTime) / span * size.width
@@ -168,6 +218,14 @@ internal fun SpeedChart(profile: RouteProfile, modifier: Modifier = Modifier) {
             val center = Offset(x(top.time), y(top.metersPerSecond))
             drawCircle(line, radius = 6.dp.toPx(), center = center)
             drawCircle(Color.White, radius = 3.dp.toPx(), center = center)
+        }
+
+        selectedTime?.let { time ->
+            val cx = x(time.coerceIn(startTime, samples.last().time))
+            drawLine(cursor.copy(alpha = 0.6f), Offset(cx, 0f), Offset(cx, size.height), strokeWidth = 1.5.dp.toPx())
+            val center = Offset(cx, y(profile.speedAt(time)))
+            drawCircle(cursorRing, radius = 8.dp.toPx(), center = center)
+            drawCircle(line, radius = 5.5.dp.toPx(), center = center)
         }
     }
 }

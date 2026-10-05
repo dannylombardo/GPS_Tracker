@@ -21,6 +21,10 @@ internal fun formatDate(millis: Long): String =
 internal fun formatTime(millis: Long): String =
     DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(millis))
 
+/** With seconds, for reading a moment off the speed chart or the map slider. */
+internal fun formatTimeWithSeconds(millis: Long): String =
+    DateFormat.getTimeInstance(DateFormat.MEDIUM).format(Date(millis))
+
 internal fun formatShortDate(date: LocalDate): String =
     date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM))
 
