@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -33,3 +35,19 @@ jobs:
         with:
           name: room-schema
           path: app/schemas/
+
+      # Each main build replaces the "latest" release, so this link always serves the newest APK
+      # as a plain file that downloads without a GitHub sign-in:
+      # https://github.com/dannylombardo/GPS_Tracker/releases/latest/download/gps-tracker.apk
+      - name: Publish APK to latest release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk gps-tracker.apk
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest gps-tracker.apk \
+            --title "GPS Tracker (latest build)" \
+            --notes "Built from ${GITHUB_SHA::7}. On an Android phone, tap gps-tracker.apk below to download it, then open it to install." \
+            --target "$GITHUB_SHA" \
+            --latest
