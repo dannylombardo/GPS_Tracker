@@ -80,10 +80,20 @@ The app follows the phone's light or dark mode.
 
 ## Installing
 
-Every push to a pull request builds a debug APK in GitHub Actions
-(**Actions → Android build → gps-tracker-debug-apk**). Download it on the phone and install it
-(you'll need to allow installs from your browser or file manager). The debug signing key is
-checked in at `app/debug.keystore`, so newer builds install over older ones without losing data.
+**[Download the latest APK](https://github.com/dannylombardo/GPS_Tracker/releases/latest/download/gps-tracker.apk)**
+on an Android phone (10 or newer). No GitHub account is needed. Open the downloaded file to
+install it: Android will ask you to allow installs from your browser or file manager, and Play
+Protect may warn that the app isn't from the Play Store (tap **More details → Install anyway**).
+
+Every merge to `main` rebuilds the APK and replaces it on the
+[latest release](https://github.com/dannylombardo/GPS_Tracker/releases/latest), so the link above
+always gets the newest version. To update, download and install it again. The debug signing key
+is checked in at `app/debug.keystore`, so newer builds install over older ones without losing
+data.
+
+Pull request builds aren't released. Their APK is attached to the workflow run under
+**Actions → Android build → Artifacts → gps-tracker-debug-apk**, which needs a GitHub sign-in
+and downloads as a zip.
 
 On first launch, walk through the three setup steps and pick **Allow all the time** for location,
 then turn on **Track drives automatically**. **Start a drive now** records a drive by hand,
