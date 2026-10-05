@@ -53,7 +53,7 @@ private enum class Tab(val label: String, val selectedIcon: ImageVector, val ico
     Fuel("Fuel", Icons.Rounded.LocalGasStation, Icons.Outlined.LocalGasStation),
 }
 
-/** What fills the screen, deepest last: the tabs, All drives or All fill-ups, the cars page or Recently deleted, a drive's page. */
+/** What fills the screen, deepest last: the tabs, a day, All drives or All fill-ups, the cars page or Recently deleted, a drive's page. */
 private sealed interface Page {
     val depth: Int
 
@@ -66,6 +66,10 @@ private sealed interface Page {
     }
 
     data object AllFillUps : Page {
+        override val depth = 1
+    }
+
+    data object Day : Page {
         override val depth = 1
     }
 
@@ -90,6 +94,7 @@ fun AppRoot(viewModel: MainViewModel) {
     val historyOpen by viewModel.historyOpen.collectAsStateWithLifecycle()
     val fuelHistoryOpen by viewModel.fuelHistoryOpen.collectAsStateWithLifecycle()
     val binOpen by viewModel.binOpen.collectAsStateWithLifecycle()
+    val dayOpen by viewModel.openDay.collectAsStateWithLifecycle()
     val cars by viewModel.cars.collectAsStateWithLifecycle()
     val fuelDraft by viewModel.fuelDraft.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Drives) }
@@ -121,6 +126,7 @@ fun AppRoot(viewModel: MainViewModel) {
     val page = openTripId?.let { Page.Drive(it) } ?: when {
         binOpen -> Page.Bin
         carsOpen -> Page.Cars
+        dayOpen != null -> Page.Day
         historyOpen -> Page.AllDrives
         fuelHistoryOpen -> Page.AllFillUps
         else -> Page.Tabs
@@ -131,6 +137,7 @@ fun AppRoot(viewModel: MainViewModel) {
             is Page.Drive -> viewModel.closeTrip()
             Page.Bin -> viewModel.closeBin()
             Page.Cars -> viewModel.closeCars()
+            Page.Day -> viewModel.closeDay()
             Page.AllDrives -> viewModel.closeHistory()
             Page.AllFillUps -> viewModel.closeFuelHistory()
             Page.Tabs -> Unit
@@ -156,6 +163,7 @@ fun AppRoot(viewModel: MainViewModel) {
             when (shownPage) {
                 is Page.Drive -> DriveDetailScreen(tripId = shownPage.tripId, viewModel = viewModel, onBack = viewModel::closeTrip)
                 Page.Cars -> CarsScreen(viewModel = viewModel, onBack = viewModel::closeCars)
+                Page.Day -> DayScreen(viewModel, onBack = viewModel::closeDay)
                 Page.AllDrives -> AllDrivesScreen(viewModel, historyList, openedWeeks, onBack = viewModel::closeHistory)
                 Page.AllFillUps -> AllFillUpsScreen(viewModel, fuelHistoryList, openedMonths, onBack = viewModel::closeFuelHistory)
                 Page.Bin -> RecentlyDeletedScreen(viewModel, onBack = viewModel::closeBin)

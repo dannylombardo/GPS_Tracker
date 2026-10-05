@@ -19,11 +19,26 @@ data class RouteProfile(
 ) {
     data class SpeedSample(val time: Long, val metersPerSecond: Double)
 
+    data class Position(val latitude: Double, val longitude: Double)
+
     val maxSpeedMetersPerSecond: Double? get() = speeds.maxOfOrNull { it.metersPerSecond }
 
     /** Distance over the time the car was actually moving. */
     fun movingAverageMetersPerSecond(distanceMeters: Double): Double? =
         if (movingMillis > 0) distanceMeters / (movingMillis / 1000.0) else null
+
+    /** The chart's speed at [time], read off the line between the samples either side of it. */
+    fun speedAt(time: Long): Double {
+        if (speeds.isEmpty()) return 0.0
+        if (time <= speeds.first().time) return speeds.first().metersPerSecond
+        if (time >= speeds.last().time) return speeds.last().metersPerSecond
+        val after = speeds.indexOfFirst { it.time >= time }
+        val a = speeds[after - 1]
+        val b = speeds[after]
+        val span = (b.time - a.time).toDouble()
+        if (span <= 0) return b.metersPerSecond
+        return a.metersPerSecond + (b.metersPerSecond - a.metersPerSecond) * ((time - a.time) / span)
+    }
 
     companion object {
         /** Slower than this between two fixes (about 7 km/h) counts as stopped. */
@@ -55,6 +70,22 @@ data class RouteProfile(
                 raw += SpeedSample(current.time, current.speedMetersPerSecond?.toDouble() ?: stepSpeed)
             }
             return RouteProfile(smooth(raw), moving, stopped)
+        }
+
+        /**
+         * Where the car was at [time], between the two fixes either side of it, so a marker
+         * glides along the route instead of jumping from fix to fix. [sorted] must be in time order.
+         */
+        fun positionAt(sorted: List<RoutePoint>, time: Long): Position? {
+            if (sorted.isEmpty()) return null
+            if (time <= sorted.first().time) return Position(sorted.first().latitude, sorted.first().longitude)
+            if (time >= sorted.last().time) return Position(sorted.last().latitude, sorted.last().longitude)
+            val after = sorted.indexOfFirst { it.time >= time }
+            val a = sorted[after - 1]
+            val b = sorted[after]
+            val span = (b.time - a.time).toDouble()
+            val f = if (span > 0) (time - a.time) / span else 1.0
+            return Position(a.latitude + (b.latitude - a.latitude) * f, a.longitude + (b.longitude - a.longitude) * f)
         }
 
         /** At most [maxPoints] evenly spaced points, first and last included, for a quick route preview. */

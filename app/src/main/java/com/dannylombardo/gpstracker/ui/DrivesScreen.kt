@@ -149,6 +149,10 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
                 carSplit = weekByCar.takeIf { showCarNames },
                 onPrevious = viewModel::previousWeek,
                 onNext = viewModel::nextWeek,
+                onDayClick = { index ->
+                    val day = week.weekStart.plusDays(index.toLong())
+                    if (day <= LocalDate.now()) viewModel.openDay(day)
+                },
             )
         }
         val unanswered = week.trips.filter { it.isMine == null }
@@ -191,6 +195,7 @@ private fun WeekCard(
     carSplit: List<Pair<Car, Double>>?,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    onDayClick: (Int) -> Unit,
 ) {
     val onHero = HeroColors.content
     Box(
@@ -234,6 +239,7 @@ private fun WeekCard(
                 barColor = onHero,
                 trackColor = onHero.copy(alpha = 0.12f),
                 labelColor = onHero.copy(alpha = 0.75f),
+                onDayClick = onDayClick,
             )
 
             Row(Modifier.fillMaxWidth()) {

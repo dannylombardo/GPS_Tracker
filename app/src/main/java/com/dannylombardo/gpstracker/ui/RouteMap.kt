@@ -33,6 +33,9 @@ import java.io.File
 /** A piece of the route drawn in one colour. */
 internal data class ColoredStretch(val color: Color, val points: List<LatLon>)
 
+/** A spot on the route to point out, like where the car was at a moment picked on the slider. */
+internal data class MapMarker(val position: LatLon, val color: Color, val label: String)
+
 internal fun SpeedBand.color(): Color = when (this) {
     SpeedBand.CRAWLING -> SpeedColors.crawling
     SpeedBand.SLOW -> SpeedColors.slow
@@ -54,6 +57,7 @@ internal fun RouteMap(
     dark: Boolean,
     modifier: Modifier = Modifier,
     stretches: List<ColoredStretch>? = null,
+    marker: MapMarker? = null,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -68,6 +72,7 @@ internal fun RouteMap(
             setMinZoomLevel(3.0)
         }
     }
+    val markerOverlay = remember { MarkerOverlay(density.density) }
 
     DisposableEffect(lifecycle, mapView) {
         val observer = LifecycleEventObserver { _, event ->
@@ -95,6 +100,12 @@ internal fun RouteMap(
                 map.tag = points
                 val colored = stretches ?: listOf(ColoredStretch(routeColor, points))
                 showRoute(map, points, colored, 4f * density.density)
+                map.overlays.add(markerOverlay)
+            }
+            if (markerOverlay.marker != marker) {
+                markerOverlay.marker = marker
+                marker?.let { keepInView(map, GeoPoint(it.position.latitude, it.position.longitude)) }
+                map.invalidate()
             }
         },
     )
@@ -152,6 +163,54 @@ private fun fitRoute(map: MapView, box: BoundingBox, padding: Int) {
         box
     }
     map.zoomToBoundingBox(padded, false, padding)
+}
+
+/** Pans a zoomed-in map so the marker doesn't slide off the edge. */
+private fun keepInView(map: MapView, where: GeoPoint) {
+    if (map.width == 0 || map.height == 0) return
+    if (!map.boundingBox.contains(where)) map.controller.animateTo(where)
+}
+
+/**
+ * The picked spot: a dot in its speed colour with a white ring, and a bubble above it
+ * with the speed. Nothing is drawn while [marker] is null.
+ */
+private class MarkerOverlay(private val density: Float) : Overlay() {
+    var marker: MapMarker? = null
+
+    private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(60, 0, 0, 0) }
+    private val bubble = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(235, 32, 33, 36) }
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        textSize = 13f * density
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+        textAlign = Paint.Align.CENTER
+    }
+    private val point = Point()
+    private val rect = android.graphics.RectF()
+
+    override fun draw(canvas: Canvas, mapView: MapView, shadow: Boolean) {
+        if (shadow) return
+        val shown = marker ?: return
+        mapView.projection.toPixels(GeoPoint(shown.position.latitude, shown.position.longitude), point)
+        val x = point.x.toFloat()
+        val y = point.y.toFloat()
+        canvas.drawCircle(x, y + density, 11f * density, this.shadow)
+        canvas.drawCircle(x, y, 10f * density, ring)
+        fill.color = shown.color.toArgb()
+        canvas.drawCircle(x, y, 7f * density, fill)
+
+        val padX = 8f * density
+        val height = 24f * density
+        val width = text.measureText(shown.label) + padX * 2
+        val bottom = y - 16f * density
+        rect.set(x - width / 2, bottom - height, x + width / 2, bottom)
+        canvas.drawRoundRect(rect, height / 2, height / 2, bubble)
+        val baseline = rect.centerY() - (text.descent() + text.ascent()) / 2
+        canvas.drawText(shown.label, x, baseline, text)
+    }
 }
 
 /** Green dot where the drive started, red where it ended. */

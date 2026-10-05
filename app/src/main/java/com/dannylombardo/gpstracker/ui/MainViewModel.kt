@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.dannylombardo.gpstracker.data.Car
 import com.dannylombardo.gpstracker.data.CarRepository
 import com.dannylombardo.gpstracker.data.CarStats
+import com.dannylombardo.gpstracker.data.DailySummary
 import com.dannylombardo.gpstracker.data.DriveHistory
 import com.dannylombardo.gpstracker.data.FuelEconomy
 import com.dannylombardo.gpstracker.data.FuelUp
@@ -115,6 +116,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         SharingStarted.WhileSubscribed(5_000),
         WeeklySummary.of(emptyList(), _weekStart.value, ZoneId.systemDefault()),
     )
+
+    /** The day whose summary page is open, if any. */
+    private val _openDay = MutableStateFlow<LocalDate?>(null)
+    val openDay: StateFlow<LocalDate?> = _openDay.asStateFlow()
+
+    /** The open day's drives and fill-ups for the shown car, or null while no day is open. */
+    val day: StateFlow<DailySummary?> = combine(finishedTrips, everyFuelUp, _openDay, viewedCarId) { trips, fuelUps, date, carId ->
+        date?.let {
+            DailySummary.of(CarStats.tripsFor(trips, carId), it, ZoneId.systemDefault(), CarStats.fuelUpsFor(fuelUps, carId))
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** The shown car's drives, or everyone's, newest first. */
     val trips: StateFlow<List<Trip>> = combine(finishedTrips, viewedCarId) { trips, carId ->
@@ -351,6 +363,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.purgeExpired(now)
             fuelRepository.purgeExpired(now)
         }
+    }
+
+    fun openDay(date: LocalDate) {
+        _openDay.value = date
+    }
+
+    /** Steps the open day back or forward, never past today. */
+    fun shiftDay(days: Long) {
+        val date = _openDay.value ?: return
+        _openDay.value = date.plusDays(days).coerceAtMost(LocalDate.now())
+    }
+
+    fun closeDay() {
+        _openDay.value = null
     }
 
     fun openFuelHistory() {
