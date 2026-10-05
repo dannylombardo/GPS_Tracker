@@ -1,5 +1,6 @@
 package com.dannylombardo.gpstracker.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -61,8 +62,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dannylombardo.gpstracker.data.Car
 import com.dannylombardo.gpstracker.data.DriveBin
@@ -151,88 +150,92 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val trip = loaded?.trip
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            TopAppBar(
-                title = { Text(trip?.let { formatDayAndDate(it.startTime) } ?: "Drive") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    if (trip?.deletedAt != null) {
-                        TextButton(onClick = { viewModel.restoreTrip(trip.id) }) { Text("Restore") }
-                    } else if (trip != null) {
-                        IconButton(onClick = { viewModel.moveToBin(trip.id) }) {
-                            Icon(Icons.Outlined.Delete, contentDescription = "Delete drive")
+    // The full screen map is drawn over the page rather than in a dialog window, so it gets
+    // the real system bar insets and its slider sits above the navigation bar.
+    Box(Modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+            topBar = {
+                TopAppBar(
+                    title = { Text(trip?.let { formatDayAndDate(it.startTime) } ?: "Drive") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-                scrollBehavior = scrollBehavior,
-            )
-        },
-    ) { padding ->
-        when {
-            loaded == null -> Unit
-            trip == null -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text(
-                    "This drive was deleted for good.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    },
+                    actions = {
+                        if (trip?.deletedAt != null) {
+                            TextButton(onClick = { viewModel.restoreTrip(trip.id) }) { Text("Restore") }
+                        } else if (trip != null) {
+                            IconButton(onClick = { viewModel.moveToBin(trip.id) }) {
+                                Icon(Icons.Outlined.Delete, contentDescription = "Delete drive")
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    ),
+                    scrollBehavior = scrollBehavior,
                 )
-            }
-            else -> Column(
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(padding)
-                    .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                if (trip.deletedAt != null) BinnedNotice(trip.deletedAt)
-                MapPreview(
-                    route,
-                    selectedTime = selectedTime,
-                    onSelect = { selectedTime = it },
-                    onExpand = { fullMap = true },
-                )
-                Summary(trip)
-                Stats(trip, route?.profile)
-                route?.profile?.takeIf { it.speeds.size >= 2 }?.let { profile ->
-                    SpeedCard(
-                        profile,
-                        selectedTime = selectedTime,
-                        onSelect = { selectedTime = it },
-                        onClear = { selectedTime = null },
+            },
+        ) { padding ->
+            when {
+                loaded == null -> Unit
+                trip == null -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                    Text(
+                        "This drive was deleted for good.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                DriverCard(trip, onAnswer = { viewModel.setDriver(trip.id, it) })
-                if (cars.size > 1) {
-                    CarCard(cars, trip.carId, onPick = { viewModel.setTripCar(trip.id, it) })
-                }
-                if (fuelUps.isNotEmpty()) {
-                    SectionHeader("Filled up on this drive")
-                    fuelUps.forEach { fuelUp ->
-                        FuelUpRow(fuelUp, consumption[fuelUp.id], onClick = { viewModel.openFuelUp(fuelUp) })
+                else -> Column(
+                    Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(padding)
+                        .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    if (trip.deletedAt != null) BinnedNotice(trip.deletedAt)
+                    MapPreview(
+                        route,
+                        selectedTime = selectedTime,
+                        onSelect = { selectedTime = it },
+                        onExpand = { fullMap = true },
+                    )
+                    Summary(trip)
+                    Stats(trip, route?.profile)
+                    route?.profile?.takeIf { it.speeds.size >= 2 }?.let { profile ->
+                        SpeedCard(
+                            profile,
+                            selectedTime = selectedTime,
+                            onSelect = { selectedTime = it },
+                            onClear = { selectedTime = null },
+                        )
+                    }
+                    DriverCard(trip, onAnswer = { viewModel.setDriver(trip.id, it) })
+                    if (cars.size > 1) {
+                        CarCard(cars, trip.carId, onPick = { viewModel.setTripCar(trip.id, it) })
+                    }
+                    if (fuelUps.isNotEmpty()) {
+                        SectionHeader("Filled up on this drive")
+                        fuelUps.forEach { fuelUp ->
+                            FuelUpRow(fuelUp, consumption[fuelUp.id], onClick = { viewModel.openFuelUp(fuelUp) })
+                        }
                     }
                 }
             }
         }
-    }
 
-    val fullRoute = route
-    if (fullMap && fullRoute != null) {
-        FullScreenMap(
-            fullRoute,
-            selectedTime = selectedTime,
-            onSelect = { selectedTime = it },
-            onClose = { fullMap = false },
-        )
+        val fullRoute = route
+        if (fullMap && fullRoute != null) {
+            FullScreenMap(
+                fullRoute,
+                selectedTime = selectedTime,
+                onSelect = { selectedTime = it },
+                onClose = { fullMap = false },
+            )
+        }
     }
 }
 
@@ -292,34 +295,33 @@ private fun MapBox(route: RouteData?, selectedTime: Long?, onExpand: () -> Unit)
 
 @Composable
 private fun FullScreenMap(route: RouteData, selectedTime: Long?, onSelect: (Long) -> Unit, onClose: () -> Unit) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-            RouteMap(
-                points = route.points,
-                routeColor = MaterialTheme.colorScheme.primary,
-                dark = isSystemInDarkTheme(),
-                modifier = Modifier.fillMaxSize(),
-                stretches = route.stretches,
-                marker = route.markerAt(selectedTime),
-            )
-            SpeedLegend(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp))
-            FilledTonalIconButton(
-                onClick = onClose,
-                modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp),
-            ) {
-                Icon(Icons.Rounded.Close, contentDescription = "Close map")
-            }
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding()) {
-                MapAttribution()
-                if (route.canScrub) {
-                    Surface(
-                        shape = MaterialTheme.shapes.large,
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        shadowElevation = 4.dp,
-                        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                    ) {
-                        DriveSlider(route.profile, selectedTime, onSelect, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
-                    }
+    BackHandler(onBack = onClose)
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+        RouteMap(
+            points = route.points,
+            routeColor = MaterialTheme.colorScheme.primary,
+            dark = isSystemInDarkTheme(),
+            modifier = Modifier.fillMaxSize(),
+            stretches = route.stretches,
+            marker = route.markerAt(selectedTime),
+        )
+        SpeedLegend(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp))
+        FilledTonalIconButton(
+            onClick = onClose,
+            modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp),
+        ) {
+            Icon(Icons.Rounded.Close, contentDescription = "Close map")
+        }
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding()) {
+            MapAttribution()
+            if (route.canScrub) {
+                Surface(
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                ) {
+                    DriveSlider(route.profile, selectedTime, onSelect, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
                 }
             }
         }
