@@ -58,7 +58,7 @@ internal fun DayScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     val day by viewModel.day.collectAsStateWithLifecycle()
     val cars by viewModel.cars.collectAsStateWithLifecycle()
     val viewedCarId by viewModel.viewedCarId.collectAsStateWithLifecycle()
-    val consumption by viewModel.consumptionByFuelUp.collectAsStateWithLifecycle()
+    val fuelUpStats by viewModel.fuelUpStats.collectAsStateWithLifecycle()
     val showCarNames = cars.size > 1 && viewedCarId == null
     val carNames = cars.associate { it.id to it.name }
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
@@ -121,7 +121,7 @@ internal fun DayScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     SwipeToBin(onBin = { viewModel.moveFuelUpToBin(fuelUp.id) }, modifier = Modifier.animateItem()) {
                         FuelUpRow(
                             fuelUp,
-                            consumption[fuelUp.id],
+                            fuelUpStats[fuelUp.id],
                             carName = fuelUp.carId?.let { carNames[it] }.takeIf { showCarNames },
                             onClick = { viewModel.openFuelUp(fuelUp) },
                         )

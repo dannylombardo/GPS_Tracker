@@ -97,6 +97,7 @@ fun AppRoot(viewModel: MainViewModel) {
     val dayOpen by viewModel.openDay.collectAsStateWithLifecycle()
     val cars by viewModel.cars.collectAsStateWithLifecycle()
     val fuelDraft by viewModel.fuelDraft.collectAsStateWithLifecycle()
+    val fuelUpStats by viewModel.fuelUpStats.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Drives) }
     // Kept out here so each tab is scrolled where you left it after visiting a drive.
     val drivesList = rememberLazyListState()
@@ -205,6 +206,7 @@ fun AppRoot(viewModel: MainViewModel) {
     fuelDraft?.let { draft ->
         FuelUpDialog(
             draft = draft,
+            stats = fuelUpStats[draft.id],
             cars = cars,
             onSave = viewModel::saveFuelUp,
             onDelete = { viewModel.moveFuelUpToBin(draft.id) },

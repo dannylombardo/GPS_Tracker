@@ -265,7 +265,7 @@ internal fun AllFillUpsScreen(
     onBack: () -> Unit,
 ) {
     val months by viewModel.fuelHistory.collectAsStateWithLifecycle()
-    val consumption by viewModel.consumptionByFuelUp.collectAsStateWithLifecycle()
+    val fuelUpStats by viewModel.fuelUpStats.collectAsStateWithLifecycle()
     val binnedCount = binCount(viewModel)
     val cars by viewModel.cars.collectAsStateWithLifecycle()
     val viewedCarId by viewModel.viewedCarId.collectAsStateWithLifecycle()
@@ -344,7 +344,7 @@ internal fun AllFillUpsScreen(
                         SwipeToBin(onBin = { viewModel.moveFuelUpToBin(fuelUp.id) }, modifier = Modifier.animateItem()) {
                             FuelUpRow(
                                 fuelUp,
-                                consumption[fuelUp.id],
+                                fuelUpStats[fuelUp.id],
                                 carName = fuelUp.carId?.let { carNames[it] }.takeIf { showCarNames },
                                 onClick = { viewModel.openFuelUp(fuelUp) },
                             )
@@ -460,7 +460,7 @@ internal fun RecentlyDeletedScreen(viewModel: MainViewModel, onBack: () -> Unit)
                     Column(Modifier.animateItem(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         FuelUpRow(
                             fuelUp,
-                            litresPer100Km = null,
+                            stats = null,
                             carName = fuelUp.carId?.let { carNames[it] }.takeIf { cars.size > 1 },
                             onClick = null,
                         )

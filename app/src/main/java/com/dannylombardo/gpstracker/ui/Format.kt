@@ -70,3 +70,14 @@ internal fun consumptionNumber(litresPer100Km: Double): String =
     String.format(Locale.getDefault(), "%.1f", litresPer100Km)
 
 internal fun formatConsumption(litresPer100Km: Double): String = "${consumptionNumber(litresPer100Km)} L/100km"
+
+internal fun formatCostPerKm(cost: Double): String =
+    NumberFormat.getCurrencyInstance().apply { maximumFractionDigits = 3 }.format(cost) + "/km"
+
+/** How long between two fill-ups: "5 h" under a day, else whole days like "6 days". */
+internal fun formatGap(millis: Double): String {
+    val hours = millis / 3_600_000
+    if (hours < 24) return "${hours.toInt().coerceAtLeast(1)} h"
+    val days = Math.round(hours / 24)
+    return if (days == 1L) "1 day" else "$days days"
+}

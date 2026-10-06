@@ -83,4 +83,45 @@ class FuelEconomyTest {
         assertNull(summary.averageLitresPer100Km)
         assertTrue(summary.byFuelUp.isEmpty())
     }
+
+    @Test
+    fun eachFillUpKnowsTheKilometresAndCostSinceThePreviousOne() {
+        val summary = FuelEconomy.summarise(
+            listOf(fill(1, 0, 45.0), fill(2, 10, 10.0, full = false, price = 2.0), fill(3, 20, 30.0)),
+            listOf(drive(1, 1, 200.0), drive(2, 12, 300.0), drive(3, 21, 40.0)),
+        )
+        val first = summary.stats.getValue(1)
+        assertNull(first.distanceSincePreviousMeters)
+        assertNull(first.costPerKm)
+
+        val part = summary.stats.getValue(2)
+        assertEquals(200_000.0, part.distanceSincePreviousMeters!!, 0.01)
+        assertEquals(10 * hour, part.millisSincePrevious)
+        assertNull(part.litresPer100Km)
+
+        val full = summary.stats.getValue(3)
+        assertEquals(300_000.0, full.distanceSincePreviousMeters!!, 0.01)
+        // 40 L over 500 km; 10 L at 2.0 plus 30 L at 1.5 = 65.0 over 500 km.
+        assertEquals(8.0, full.litresPer100Km!!, 1e-9)
+        assertEquals(0.13, full.costPerKm!!, 1e-9)
+        assertEquals(0.13, summary.averageCostPerKm!!, 1e-9)
+        assertEquals(250_000.0, summary.averageDistanceBetweenMeters!!, 0.01)
+        assertEquals(10.0 * hour, summary.averageMillisBetween!!, 0.01)
+    }
+
+    @Test
+    fun averagePriceWeighsBigFillUpsMore() {
+        val summary = FuelEconomy.summarise(listOf(fill(1, 0, 30.0, price = 1.0), fill(2, 5, 10.0, price = 2.0)), emptyList())
+        assertEquals(50.0 / 40.0, summary.averagePricePerLitre!!, 1e-9)
+    }
+
+    @Test
+    fun bestAndWorstTanks() {
+        val summary = FuelEconomy.summarise(
+            listOf(fill(1, 0, 40.0), fill(2, 10, 30.0), fill(3, 20, 50.0)),
+            listOf(drive(1, 1, 500.0), drive(2, 11, 500.0)),
+        )
+        assertEquals(6.0, summary.bestLitresPer100Km!!, 1e-9)
+        assertEquals(10.0, summary.worstLitresPer100Km!!, 1e-9)
+    }
 }

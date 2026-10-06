@@ -20,7 +20,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LocalGasStation
+import androidx.compose.material.icons.rounded.Eco
+import androidx.compose.material.icons.rounded.Event
+import androidx.compose.material.icons.rounded.LocalFireDepartment
 import androidx.compose.material.icons.rounded.NearMe
+import androidx.compose.material.icons.rounded.Payments
+import androidx.compose.material.icons.rounded.Receipt
+import androidx.compose.material.icons.rounded.Sell
+import androidx.compose.material.icons.rounded.WaterDrop
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -50,7 +57,7 @@ import java.time.YearMonth
 @Composable
 internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padding: PaddingValues) {
     val economyByCar by viewModel.economyByCar.collectAsStateWithLifecycle()
-    val consumption by viewModel.consumptionByFuelUp.collectAsStateWithLifecycle()
+    val fuelUpStats by viewModel.fuelUpStats.collectAsStateWithLifecycle()
     val fuelUps by viewModel.fuelUps.collectAsStateWithLifecycle()
     val cars by viewModel.cars.collectAsStateWithLifecycle()
     val viewedCarId by viewModel.viewedCarId.collectAsStateWithLifecycle()
@@ -89,6 +96,10 @@ internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padd
                 Spacer(Modifier.width(8.dp))
                 Text("Add fill-up")
             }
+        }
+        val shownEconomy = shownCarId?.let { economyByCar[it] }
+        if (shownEconomy != null && shownEconomy.fuelUps.isNotEmpty()) {
+            item(key = "stats") { FuelStatsSection(shownEconomy) }
         }
         item { StationSpottingCard(stationSpotting, viewModel::setStationSpotting) }
 
@@ -138,7 +149,7 @@ internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padd
                 SwipeToBin(onBin = { viewModel.moveFuelUpToBin(fuelUp.id) }, modifier = Modifier.animateItem()) {
                     FuelUpRow(
                         fuelUp,
-                        consumption[fuelUp.id],
+                        fuelUpStats[fuelUp.id],
                         carName = fuelUp.carId?.let { carNames[it] }.takeIf { shownCarId == null },
                         onClick = { viewModel.openFuelUp(fuelUp) },
                     )
@@ -196,6 +207,20 @@ private fun EconomyCard(economy: FuelEconomy.Summary, latest: FuelUp?, title: St
                     Modifier.weight(1f),
                 )
             }
+            Row(Modifier.fillMaxWidth()) {
+                HeroStat(
+                    "Cost per km",
+                    economy.averageCostPerKm?.let(::formatCostPerKm) ?: "–",
+                    onHero,
+                    Modifier.weight(1f),
+                )
+                HeroStat(
+                    "Km per fill-up",
+                    economy.averageDistanceBetweenMeters?.let(::formatKm) ?: "–",
+                    onHero,
+                    Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -213,16 +238,31 @@ private fun AllCarsEconomyCard(cars: List<Car>, economyByCar: Map<Long, FuelEcon
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Fuel economy by car", style = MaterialTheme.typography.titleMedium, color = onHero)
             cars.forEach { car ->
-                val average = economyByCar[car.id]?.averageLitresPer100Km
+                val economy = economyByCar[car.id]
+                val average = economy?.averageLitresPer100Km
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        car.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = onHero,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f).padding(bottom = 4.dp),
-                    )
+                    Column(Modifier.weight(1f).padding(bottom = 4.dp)) {
+                        Text(
+                            car.name,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = onHero,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        val details = listOfNotNull(
+                            economy?.averageCostPerKm?.let(::formatCostPerKm),
+                            economy?.averageDistanceBetweenMeters?.let { "${formatKm(it)} per fill-up" },
+                        )
+                        if (details.isNotEmpty()) {
+                            Text(
+                                details.joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall.tabular(),
+                                color = onHero.copy(alpha = 0.75f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                     if (average != null) {
                         BigNumber(consumptionNumber(average), "L/100km", color = onHero, style = MaterialTheme.typography.headlineLarge)
                     } else {
@@ -238,6 +278,70 @@ private fun AllCarsEconomyCard(cars: List<Car>, economyByCar: Map<Long, FuelEcon
             Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
                 HeroStat("Spent, all cars", formatMoney(fuelUps.sumOf { it.totalCost }), onHero, Modifier.weight(1f))
                 HeroStat("Litres, all cars", formatLitres(fuelUps.sumOf { it.litres }), onHero, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** The shown car's all-time fuel numbers, as a grid of tiles under the economy card. */
+@Composable
+private fun FuelStatsSection(economy: FuelEconomy.Summary) {
+    val fuelUps = economy.fuelUps
+    val accent = MaterialTheme.colorScheme.tertiary
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionHeader("All-time stats")
+        StatRow {
+            StatTile(Icons.Rounded.Payments, "Spent on fuel", formatMoney(fuelUps.sumOf { it.totalCost }), Modifier.weight(1f), accent)
+            StatTile(Icons.Rounded.WaterDrop, "Litres bought", formatLitres(fuelUps.sumOf { it.litres }), Modifier.weight(1f), accent)
+        }
+        StatRow {
+            StatTile(
+                Icons.Rounded.Sell,
+                "Average price",
+                economy.averagePricePerLitre?.let(::formatPricePerLitre) ?: "–",
+                Modifier.weight(1f),
+                accent,
+            )
+            StatTile(
+                Icons.Rounded.Receipt,
+                "Average fill-up",
+                formatMoney(fuelUps.sumOf { it.totalCost } / fuelUps.size),
+                Modifier.weight(1f),
+                accent,
+            )
+        }
+        StatRow {
+            StatTile(
+                Icons.Rounded.Event,
+                "Between fill-ups",
+                economy.averageMillisBetween?.let(::formatGap) ?: "–",
+                Modifier.weight(1f),
+                accent,
+            )
+            StatTile(
+                Icons.Rounded.LocalGasStation,
+                "Fill-ups",
+                fuelUps.size.toString(),
+                Modifier.weight(1f),
+                accent,
+            )
+        }
+        if (economy.intervals.count { it.litresPer100Km != null } >= 2) {
+            StatRow {
+                StatTile(
+                    Icons.Rounded.Eco,
+                    "Best tank",
+                    economy.bestLitresPer100Km?.let(::formatConsumption) ?: "–",
+                    Modifier.weight(1f),
+                    accent,
+                )
+                StatTile(
+                    Icons.Rounded.LocalFireDepartment,
+                    "Worst tank",
+                    economy.worstLitresPer100Km?.let(::formatConsumption) ?: "–",
+                    Modifier.weight(1f),
+                    accent,
+                )
             }
         }
     }
@@ -270,17 +374,17 @@ private fun StationSpottingCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun FuelUpRow(fuelUp: FuelUp, litresPer100Km: Double?, carName: String? = null, onClick: (() -> Unit)?) {
+internal fun FuelUpRow(fuelUp: FuelUp, stats: FuelEconomy.FuelUpStats?, carName: String? = null, onClick: (() -> Unit)?) {
     val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     if (onClick != null) {
-        Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), colors = colors) { FuelUpRowContent(fuelUp, litresPer100Km, carName) }
+        Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), colors = colors) { FuelUpRowContent(fuelUp, stats, carName) }
     } else {
-        Card(modifier = Modifier.fillMaxWidth(), colors = colors) { FuelUpRowContent(fuelUp, litresPer100Km, carName) }
+        Card(modifier = Modifier.fillMaxWidth(), colors = colors) { FuelUpRowContent(fuelUp, stats, carName) }
     }
 }
 
 @Composable
-private fun FuelUpRowContent(fuelUp: FuelUp, litresPer100Km: Double?, carName: String?) {
+private fun FuelUpRowContent(fuelUp: FuelUp, stats: FuelEconomy.FuelUpStats?, carName: String?) {
     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
         IconBadge(
             Icons.Rounded.LocalGasStation,
@@ -302,8 +406,24 @@ private fun FuelUpRowContent(fuelUp: FuelUp, litresPer100Km: Double?, carName: S
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            litresPer100Km?.let {
-                Pill(formatConsumption(it), MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+            stats?.distanceSincePreviousMeters?.let {
+                Text(
+                    "${formatKm(it)} since last fill-up",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            val litresPer100Km = stats?.litresPer100Km
+            val costPerKm = stats?.costPerKm
+            if (litresPer100Km != null || costPerKm != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    litresPer100Km?.let {
+                        Pill(formatConsumption(it), MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+                    }
+                    costPerKm?.let {
+                        Pill(formatCostPerKm(it), MaterialTheme.colorScheme.secondaryContainer, MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
+                }
             }
         }
         Spacer(Modifier.width(8.dp))
