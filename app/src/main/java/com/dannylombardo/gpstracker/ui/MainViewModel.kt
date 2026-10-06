@@ -160,9 +160,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             CarStats.economyByCar(cars, fuelUps, trips)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
-    /** The L/100km of the stretch ending at each fill-up, by fill-up id, across all cars. */
-    val consumptionByFuelUp: StateFlow<Map<Long, Double>> = economyByCar
-        .map { byCar -> byCar.values.flatMap { it.byFuelUp.entries }.associate { it.key to it.value } }
+    /** Each fill-up's own numbers (km since the last one, L/100km, cost per km), by fill-up id, across all cars. */
+    val fuelUpStats: StateFlow<Map<Long, FuelEconomy.FuelUpStats>> = economyByCar
+        .map { byCar -> byCar.values.flatMap { it.stats.entries }.associate { it.key to it.value } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** The shown car's fill-ups, or everyone's for all cars, newest first. */

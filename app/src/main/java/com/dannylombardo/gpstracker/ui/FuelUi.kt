@@ -6,6 +6,10 @@ import android.text.format.DateFormat as AndroidDateFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.LocalGasStation
@@ -14,6 +18,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,13 +33,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.dannylombardo.gpstracker.data.Car
+import com.dannylombardo.gpstracker.data.FuelEconomy
 import com.dannylombardo.gpstracker.data.FuelUp
+import com.dannylombardo.gpstracker.ui.theme.tabular
 import java.util.Calendar
 
 /** Adds a new fill-up, or edits or deletes an existing one (non-zero id). */
 @Composable
 internal fun FuelUpDialog(
     draft: FuelUp,
+    stats: FuelEconomy.FuelUpStats?,
     cars: List<Car>,
     onSave: (FuelUp) -> Unit,
     onDelete: () -> Unit,
@@ -81,7 +89,8 @@ internal fun FuelUpDialog(
         icon = { Icon(Icons.Rounded.LocalGasStation, contentDescription = null) },
         title = { Text(if (isNew) "Add fill-up" else "Edit fill-up") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (!isNew && stats != null) FuelUpStatsPanel(draft, stats)
                 if (cars.size > 1) {
                     CarChoiceChips(cars, selectedId = carId, onSelect = { carId = it })
                 }
@@ -155,6 +164,61 @@ internal fun FuelUpDialog(
             }
         },
     )
+}
+
+/** What this fill-up tells you, above the form when you open one you've already logged. */
+@Composable
+private fun FuelUpStatsPanel(fuelUp: FuelUp, stats: FuelEconomy.FuelUpStats) {
+    val since = stats.distanceSincePreviousMeters
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (since == null) {
+                Text(
+                    "The first fill-up for this car, so there's nothing to measure from yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+                return@Column
+            }
+            Row {
+                PanelStat("Since last fill-up", formatKm(since), Modifier.weight(1f))
+                PanelStat("Time since", stats.millisSincePrevious?.let { formatGap(it.toDouble()) } ?: "–", Modifier.weight(1f))
+            }
+            val interval = stats.interval
+            if (interval != null && interval.distanceMeters > 0) {
+                Row {
+                    PanelStat("This tank", interval.litresPer100Km?.let(::formatConsumption) ?: "–", Modifier.weight(1f))
+                    PanelStat("Cost per km", interval.costPerKm?.let(::formatCostPerKm) ?: "–", Modifier.weight(1f))
+                }
+                if (interval.distanceMeters != since) {
+                    Text(
+                        "Tank measured over ${formatKm(interval.distanceMeters)}, counting the part fills since your last full tank.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.75f),
+                    )
+                }
+            } else {
+                Text(
+                    if (fuelUp.isFullTank) "L/100km and cost per km show once there's a full tank before this one."
+                    else "A part fill: its litres count towards the next full tank's L/100km.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.75f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PanelStat(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(value, style = MaterialTheme.typography.titleMedium.tabular(), color = MaterialTheme.colorScheme.onTertiaryContainer)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.75f))
+    }
 }
 
 /** Accepts either a comma or a dot as the decimal separator. */

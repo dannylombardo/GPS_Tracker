@@ -129,7 +129,7 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
         .collectAsStateWithLifecycle(initialValue = null)
     val fuelUps by remember(tripId) { viewModel.fuelUpsForTrip(tripId) }
         .collectAsStateWithLifecycle(initialValue = emptyList())
-    val consumption by viewModel.consumptionByFuelUp.collectAsStateWithLifecycle()
+    val fuelUpStats by viewModel.fuelUpStats.collectAsStateWithLifecycle()
     val cars by viewModel.cars.collectAsStateWithLifecycle()
     val route by produceState<RouteData?>(null, tripId) {
         val points = viewModel.routePoints(tripId)
@@ -220,7 +220,7 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
                     if (fuelUps.isNotEmpty()) {
                         SectionHeader("Filled up on this drive")
                         fuelUps.forEach { fuelUp ->
-                            FuelUpRow(fuelUp, consumption[fuelUp.id], onClick = { viewModel.openFuelUp(fuelUp) })
+                            FuelUpRow(fuelUp, fuelUpStats[fuelUp.id], onClick = { viewModel.openFuelUp(fuelUp) })
                         }
                     }
                 }
