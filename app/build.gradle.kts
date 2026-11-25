@@ -14,8 +14,8 @@ android {
         applicationId = "com.dannylombardo.gpstracker"
         minSdk = 29
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
     }
 
     signingConfigs {
@@ -72,6 +72,7 @@ dependencies {
     implementation(libs.play.services.location)
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.osmdroid)
+    implementation(libs.haze)
 
     testImplementation(libs.junit)
 }

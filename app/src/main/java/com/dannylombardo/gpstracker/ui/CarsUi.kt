@@ -62,6 +62,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.dannylombardo.gpstracker.ui.theme.apple
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dannylombardo.gpstracker.data.Car
@@ -85,38 +92,45 @@ internal fun CarFilterRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (cars.size > 1) {
-            CarChip("All cars", selected = viewedCarId == null, onClick = { onSelect(null) })
+            Capsule("All cars", selected = viewedCarId == null, onClick = { onSelect(null) })
             cars.forEach { car ->
-                CarChip(car.name, selected = viewedCarId == car.id, onClick = { onSelect(car.id) })
+                Capsule(car.name, selected = viewedCarId == car.id, onClick = { onSelect(car.id) })
             }
-            AssistChip(
-                onClick = onManage,
-                label = { Text("Cars") },
-                leadingIcon = { Icon(Icons.Rounded.Garage, contentDescription = null, modifier = Modifier.size(18.dp)) },
-            )
+            Capsule("Cars", selected = false, onClick = onManage, icon = Icons.Rounded.Garage)
         } else {
-            cars.firstOrNull()?.let { car -> CarChip(car.name, selected = true, onClick = onManage) }
-            AssistChip(
-                onClick = onManage,
-                label = { Text("Add a car") },
-                leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp)) },
-            )
+            cars.firstOrNull()?.let { car -> Capsule(car.name, selected = true, onClick = onManage, icon = Icons.Rounded.DirectionsCar) }
+            Capsule("Add a car", selected = false, onClick = onManage, icon = Icons.Rounded.Add)
         }
     }
 }
 
+/** A capsule chip: solid accent when picked, glass when not. */
 @Composable
-private fun CarChip(name: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        leadingIcon = if (selected) {
-            { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
-        } else {
-            null
-        },
-    )
+internal fun Capsule(text: String, selected: Boolean, onClick: () -> Unit, icon: ImageVector? = null) {
+    val background by animateColorAsState(if (selected) MaterialTheme.colorScheme.primary else glassFill(), label = "chip")
+    val content = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
+    Row(
+        Modifier
+            .height(36.dp)
+            .clip(CircleShape)
+            .background(background)
+            .border(if (selected) BorderStroke(0.dp, Color.Transparent) else glassEdge(), CircleShape)
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(
+            text,
+            style = if (selected) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
+            color = content,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
 
 /** A row of chips to pick one car, e.g. which car a fill-up or drive belongs to. */
@@ -127,17 +141,11 @@ internal fun CarChoiceChips(cars: List<Car>, selectedId: Long?, onSelect: (Long)
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         cars.forEach { car ->
-            FilterChip(
+            Capsule(
+                car.name,
                 selected = car.id == selectedId,
                 onClick = { onSelect(car.id) },
-                label = { Text(car.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                leadingIcon = {
-                    Icon(
-                        if (car.id == selectedId) Icons.Rounded.Check else Icons.Rounded.DirectionsCar,
-                        contentDescription = null,
-                        modifier = Modifier.size(FilterChipDefaults.IconSize),
-                    )
-                },
+                icon = if (car.id == selectedId) Icons.Rounded.Check else Icons.Rounded.DirectionsCar,
             )
         }
     }
@@ -188,27 +196,13 @@ internal fun CarsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     var adding by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Car?>(null) }
     var deleting by remember { mutableStateOf<Car?>(null) }
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val listState = rememberLazyListState()
+    val scrolled by listState.scrolledState()
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            TopAppBar(
-                title = { Text("Your cars") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-                scrollBehavior = scrollBehavior,
-            )
-        },
-    ) { padding ->
-        val (allTotals, perCar) = overviews ?: return@Scaffold
+    PageScaffold(title = "Your cars", scrolled = scrolled, onBack = onBack) { padding ->
+        val (allTotals, perCar) = overviews ?: return@PageScaffold
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 16.dp,
@@ -219,7 +213,7 @@ internal fun CarsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { AllCarsCard(allTotals, carCount = perCar.size) }
-            item { SectionHeader("Cars") }
+            item { SectionTitle("Cars") }
             items(perCar, key = { "car-${it.car.id}" }) { overview ->
                 CarCard(
                     overview = overview,
@@ -231,11 +225,7 @@ internal fun CarsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 )
             }
             item {
-                OutlinedButton(onClick = { adding = true }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                    Icon(Icons.Rounded.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Add a car")
-                }
+                TintedButton("Add a car", onClick = { adding = true }, icon = Icons.Rounded.Add, modifier = Modifier.fillMaxWidth())
             }
             item {
                 Text(
@@ -286,13 +276,8 @@ internal fun CarsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
 @Composable
 private fun AllCarsCard(totals: CarStats.Totals, carCount: Int) {
     val onHero = HeroColors.content
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(Brush.linearGradient(HeroColors.drive)),
-    ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    HeroCard(HeroColors.drive) {
+        run {
             Text(
                 if (carCount == 1) "All time" else "All $carCount cars, all time",
                 style = MaterialTheme.typography.titleMedium,
@@ -318,13 +303,13 @@ private fun CarCard(
     onDelete: () -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(Modifier.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    GlassCard(contentPadding = PaddingValues(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconBadge(
                     Icons.Rounded.DirectionsCar,
-                    container = if (isActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-                    content = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    container = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.apple.fill,
+                    content = if (isActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
@@ -371,7 +356,7 @@ private fun CarCard(
                 CarFigure("Fuel", formatMoney(overview.totals.moneySpent), Modifier.weight(1f))
             }
             if (!isActive) {
-                TextButton(onClick = onMakeActive) { Text("Use for new drives") }
+                TintedButton("Use for new drives", onClick = onMakeActive, modifier = Modifier.padding(end = 12.dp).fillMaxWidth())
             }
         }
     }
@@ -427,7 +412,9 @@ private fun DeleteCarDialog(car: Car, others: List<Car>, onDelete: (Long?) -> Un
                 ChoiceRow("Delete them for good", selected = moveTo == null, onClick = { moveTo = null })
             }
         },
-        confirmButton = { TextButton(onClick = { onDelete(moveTo) }) { Text("Delete car") } },
+        confirmButton = {
+            TextButton(onClick = { onDelete(moveTo) }) { Text("Delete car", color = MaterialTheme.apple.red) }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

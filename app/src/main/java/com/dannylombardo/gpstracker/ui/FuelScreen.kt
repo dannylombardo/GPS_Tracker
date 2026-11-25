@@ -64,7 +64,6 @@ internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padd
     // With one car, "all cars" is that car.
     val shownCarId = viewedCarId ?: cars.singleOrNull()?.id
     val carNames = cars.associate { it.id to it.name }
-    val stationSpotting by viewModel.stationSpotting.collectAsStateWithLifecycle()
 
     LazyColumn(
         state = listState,
@@ -77,7 +76,7 @@ internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padd
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item { ScreenHeader("Fuel", "Your real consumption, full tank to full tank") }
+        item { ScreenHeader("Fuel", "Full tank to full tank") }
         item { CarFilterRow(cars, viewedCarId, onSelect = viewModel::viewCar, onManage = viewModel::openCars) }
         item {
             if (shownCarId != null) {
@@ -90,33 +89,20 @@ internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padd
                 AllCarsEconomyCard(cars, economyByCar, fuelUps)
             }
         }
-        item {
-            Button(onClick = { viewModel.openFuelUp() }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                Icon(Icons.Rounded.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Add fill-up")
-            }
-        }
         val shownEconomy = shownCarId?.let { economyByCar[it] }
         if (shownEconomy != null && shownEconomy.fuelUps.isNotEmpty()) {
             item(key = "stats") { FuelStatsSection(shownEconomy) }
         }
-        item { StationSpottingCard(stationSpotting, viewModel::setStationSpotting) }
 
         val thisMonth = YearMonth.now()
         val monthFuelUps = fuelUps.filter { YearMonth.from(localDateOf(it.time)) == thisMonth }
         item(key = "month") {
-            Row(verticalAlignment = Alignment.Bottom) {
-                SectionHeader("This month", Modifier.weight(1f))
-                if (monthFuelUps.isNotEmpty()) {
-                    Text(
-                        formatMoney(monthFuelUps.sumOf { it.totalCost }),
-                        style = MaterialTheme.typography.titleSmall.tabular(),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(end = 4.dp),
-                    )
-                }
-            }
+            SectionTitle(
+                "This month",
+                trailing = monthFuelUps.takeIf { it.isNotEmpty() }?.let { formatMoney(it.sumOf { f -> f.totalCost }) },
+                action = "See All",
+                onAction = viewModel::openFuelHistory,
+            )
         }
         if (monthFuelUps.isEmpty()) {
             item(key = "month-empty") {
@@ -128,7 +114,7 @@ internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padd
                     IconBadge(
                         Icons.Rounded.LocalGasStation,
                         container = MaterialTheme.colorScheme.tertiaryContainer,
-                        content = MaterialTheme.colorScheme.onTertiaryContainer,
+                        content = MaterialTheme.colorScheme.tertiary,
                         size = 64.dp,
                     )
                     Text(
@@ -141,6 +127,12 @@ internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padd
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
+                    )
+                    PrimaryButton(
+                        "Add fill-up",
+                        onClick = { viewModel.openFuelUp() },
+                        icon = Icons.Rounded.Add,
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                 }
             }
@@ -156,26 +148,14 @@ internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padd
                 }
             }
         }
-        item(key = "see-all") {
-            FilledTonalButton(onClick = viewModel::openFuelHistory, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("See all fill-ups")
-            }
-        }
     }
 }
 
 @Composable
 private fun EconomyCard(economy: FuelEconomy.Summary, latest: FuelUp?, title: String) {
     val onHero = HeroColors.content
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(Brush.linearGradient(HeroColors.fuel)),
-    ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    HeroCard(HeroColors.fuel) {
+        run {
             Text(title, style = MaterialTheme.typography.titleMedium, color = onHero)
             val average = economy.averageLitresPer100Km
             if (average != null) {
@@ -229,13 +209,8 @@ private fun EconomyCard(economy: FuelEconomy.Summary, latest: FuelUp?, title: St
 @Composable
 private fun AllCarsEconomyCard(cars: List<Car>, economyByCar: Map<Long, FuelEconomy.Summary>, fuelUps: List<FuelUp>) {
     val onHero = HeroColors.content
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(Brush.linearGradient(HeroColors.fuel)),
-    ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    HeroCard(HeroColors.fuel) {
+        run {
             Text("Fuel economy by car", style = MaterialTheme.typography.titleMedium, color = onHero)
             cars.forEach { car ->
                 val economy = economyByCar[car.id]
@@ -347,40 +322,10 @@ private fun FuelStatsSection(economy: FuelEconomy.Summary) {
     }
 }
 
-@Composable
-private fun StationSpottingCard(enabled: Boolean, onChange: (Boolean) -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconBadge(
-                Icons.Rounded.NearMe,
-                container = MaterialTheme.colorScheme.secondaryContainer,
-                content = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Text("Spot gas station stops", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    "After a drive, checks OpenStreetMap for a gas station where you stopped and " +
-                        "offers to log the fill-up. Only the stop locations are sent.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            Switch(checked = enabled, onCheckedChange = onChange)
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun FuelUpRow(fuelUp: FuelUp, stats: FuelEconomy.FuelUpStats?, carName: String? = null, onClick: (() -> Unit)?) {
-    val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
-    if (onClick != null) {
-        Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), colors = colors) { FuelUpRowContent(fuelUp, stats, carName) }
-    } else {
-        Card(modifier = Modifier.fillMaxWidth(), colors = colors) { FuelUpRowContent(fuelUp, stats, carName) }
-    }
+    GlassCard(onClick = onClick, contentPadding = PaddingValues(0.dp)) { FuelUpRowContent(fuelUp, stats, carName) }
 }
 
 @Composable
@@ -389,7 +334,7 @@ private fun FuelUpRowContent(fuelUp: FuelUp, stats: FuelEconomy.FuelUpStats?, ca
         IconBadge(
             Icons.Rounded.LocalGasStation,
             container = MaterialTheme.colorScheme.tertiaryContainer,
-            content = MaterialTheme.colorScheme.onTertiaryContainer,
+            content = MaterialTheme.colorScheme.tertiary,
             size = 44.dp,
         )
         Spacer(Modifier.width(14.dp))

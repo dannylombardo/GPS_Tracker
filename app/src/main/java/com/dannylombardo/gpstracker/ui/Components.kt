@@ -10,9 +10,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -27,25 +27,17 @@ import com.dannylombardo.gpstracker.ui.theme.tabular
 /** A screen's big title, with an optional line under it. */
 @Composable
 internal fun ScreenHeader(title: String, subtitle: String? = null) {
-    Column(Modifier.padding(top = 12.dp, bottom = 4.dp)) {
-        Text(title, style = MaterialTheme.typography.headlineLarge)
-        if (subtitle != null) {
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    LargeTitle(title, subtitle)
 }
 
+/** A small grey caps heading over a group of rows, like iOS's grouped lists. */
 @Composable
 internal fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     Text(
-        text,
-        style = MaterialTheme.typography.titleSmall,
+        text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(start = 4.dp, top = 12.dp),
+        modifier = modifier.padding(start = 16.dp, top = 12.dp),
     )
 }
 
@@ -94,13 +86,14 @@ internal fun StatTile(
     modifier: Modifier = Modifier,
     accent: Color = MaterialTheme.colorScheme.primary,
 ) {
-    Surface(
-        modifier = modifier,
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
+    GlassCard(modifier = modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(
+                Modifier.size(30.dp).background(accent.copy(alpha = 0.14f), RoundedCornerShape(9.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp))
+            }
             Text(value, style = MaterialTheme.typography.titleLarge.tabular())
             Text(
                 label,

@@ -27,6 +27,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import com.dannylombardo.gpstracker.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -213,6 +214,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** The fill-up being added or edited in the fill-up form, if it's open. */
     private val _fuelDraft = MutableStateFlow<FuelUp?>(null)
     val fuelDraft: StateFlow<FuelUp?> = _fuelDraft.asStateFlow()
+
+    /** Whether the Settings page is open. */
+    private val _settingsOpen = MutableStateFlow(false)
+    val settingsOpen: StateFlow<Boolean> = _settingsOpen.asStateFlow()
+
+    /** Light, dark, or following the phone. */
+    private val _themeMode = MutableStateFlow(AppearancePrefs.themeMode(application))
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
 
     private val _stationSpotting = MutableStateFlow(TrackingPrefs.isStationSpottingEnabled(application))
     val stationSpotting: StateFlow<Boolean> = _stationSpotting.asStateFlow()
@@ -470,6 +479,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeCars() {
         _carsOpen.value = false
+    }
+
+    fun openSettings() {
+        _settingsOpen.value = true
+    }
+
+    fun closeSettings() {
+        _settingsOpen.value = false
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        AppearancePrefs.setThemeMode(app, mode)
+        _themeMode.value = mode
     }
 
     fun setStationSpotting(enabled: Boolean) {
