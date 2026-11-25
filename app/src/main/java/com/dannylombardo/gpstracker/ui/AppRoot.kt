@@ -3,6 +3,9 @@ package com.dannylombardo.gpstracker.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -18,6 +21,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DirectionsCar
+import androidx.compose.material.icons.outlined.Garage
+import androidx.compose.material.icons.rounded.Garage
+import com.dannylombardo.gpstracker.ui.garage.GarageOverlay
+import com.dannylombardo.gpstracker.ui.garage.GarageScreen
+import com.dannylombardo.gpstracker.ui.garage.GarageViewModel
 import androidx.compose.material.icons.outlined.LocalGasStation
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DirectionsCar
@@ -52,6 +60,7 @@ import java.time.YearMonth
 private enum class Tab(val label: String, val selectedIcon: ImageVector, val icon: ImageVector) {
     Drives("Drives", Icons.Rounded.DirectionsCar, Icons.Outlined.DirectionsCar),
     Fuel("Fuel", Icons.Rounded.LocalGasStation, Icons.Outlined.LocalGasStation),
+    Garage("Garage", Icons.Rounded.Garage, Icons.Outlined.Garage),
 }
 
 /** What fills the screen, deepest last: the tabs, a day, All drives, All fill-ups or Settings, the cars page or Recently deleted, a drive's page. */
@@ -92,8 +101,9 @@ private sealed interface Page {
 }
 
 /** The two tabs, with the other pages sliding in over them when opened. */
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun AppRoot(viewModel: MainViewModel) {
+fun AppRoot(viewModel: MainViewModel, garage: GarageViewModel) {
     val openTripId by viewModel.openTripId.collectAsStateWithLifecycle()
     val carsOpen by viewModel.carsOpen.collectAsStateWithLifecycle()
     val historyOpen by viewModel.historyOpen.collectAsStateWithLifecycle()
@@ -108,6 +118,7 @@ fun AppRoot(viewModel: MainViewModel) {
     // Kept out here so each tab is scrolled where you left it after visiting a drive.
     val drivesList = rememberLazyListState()
     val fuelList = rememberLazyListState()
+    val garageList = rememberLazyListState()
     val historyList = rememberLazyListState()
     val openedWeeks = remember { mutableStateMapOf<LocalDate, Boolean>() }
     val fuelHistoryList = rememberLazyListState()
@@ -115,6 +126,12 @@ fun AppRoot(viewModel: MainViewModel) {
     val snackbar = remember { SnackbarHostState() }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
+    LaunchedEffect(Unit) {
+        garage.tabRequests.collect {
+            viewModel.closeTrip()
+            tab = Tab.Garage
+        }
+    }
     LaunchedEffect(Unit) {
         viewModel.binnedEvents.collect { binned ->
             val result = snackbar.showSnackbar(
@@ -155,6 +172,9 @@ fun AppRoot(viewModel: MainViewModel) {
     }
 
     Box(Modifier.fillMaxSize()) {
+        // Lets a drive's route thumbnail grow into its map when the drive opens, and shrink back.
+        SharedTransitionLayout {
+        CompositionLocalProvider(LocalSharedTransitions provides this) {
         AnimatedContent(
             targetState = page,
             transitionSpec = {
@@ -170,6 +190,7 @@ fun AppRoot(viewModel: MainViewModel) {
             },
             label = "page",
         ) { shownPage ->
+            CompositionLocalProvider(LocalPageVisibility provides this) {
             when (shownPage) {
                 is Page.Drive -> DriveDetailScreen(tripId = shownPage.tripId, viewModel = viewModel, onBack = viewModel::closeTrip)
                 Page.Cars -> CarsScreen(viewModel = viewModel, onBack = viewModel::closeCars)
@@ -184,8 +205,13 @@ fun AppRoot(viewModel: MainViewModel) {
                     viewModel = viewModel,
                     drivesList = drivesList,
                     fuelList = fuelList,
+                    garageList = garageList,
+                    garage = garage,
                 )
             }
+        }
+            }
+        }
         }
 
         // The fill-up form slides up as a sheet over whatever page is showing.
@@ -197,6 +223,9 @@ fun AppRoot(viewModel: MainViewModel) {
             onDelete = { fuelDraft?.let { viewModel.moveFuelUpToBin(it.id) } },
             onDismiss = viewModel::closeFuelUp,
         )
+
+        // The Garage's own pages (live dash, upkeep, recaps...) slide in over everything.
+        GarageOverlay(garage, onOpenTrip = viewModel::openTrip)
 
         SnackbarHost(
             snackbar,
@@ -227,8 +256,14 @@ private fun TabsPage(
     viewModel: MainViewModel,
     drivesList: LazyListState,
     fuelList: LazyListState,
+    garageList: LazyListState,
+    garage: GarageViewModel,
 ) {
-    val list = if (tab == Tab.Drives) drivesList else fuelList
+    val list = when (tab) {
+        Tab.Drives -> drivesList
+        Tab.Fuel -> fuelList
+        Tab.Garage -> garageList
+    }
     val scrolled by list.scrolledState()
     val titleGone by list.largeTitleGoneState()
     val items = remember { Tab.entries.map { TabItem(it.label, it.icon, it.selectedIcon) } }
@@ -263,6 +298,7 @@ private fun TabsPage(
             when (shown) {
                 Tab.Drives -> DrivesScreen(viewModel, drivesList, padding)
                 Tab.Fuel -> FuelScreen(viewModel, fuelList, padding)
+                Tab.Garage -> GarageScreen(garage, garageList, padding)
             }
         }
     }

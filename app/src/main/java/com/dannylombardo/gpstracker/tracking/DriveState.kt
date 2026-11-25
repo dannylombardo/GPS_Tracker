@@ -9,6 +9,15 @@ object DriveState {
     private val _activeTripId = MutableStateFlow<Long?>(null)
     val activeTripId: StateFlow<Long?> = _activeTripId.asStateFlow()
 
+    private val _live = MutableStateFlow<LiveDrive?>(null)
+
+    /** Speed, distance and time of the drive being recorded, or null between drives. */
+    val live: StateFlow<LiveDrive?> = _live.asStateFlow()
+
+    internal fun setLive(live: LiveDrive?) {
+        _live.value = live
+    }
+
     /** True from the moment the tracking service starts a drive until it ends. */
     @Volatile
     var isServiceRunning: Boolean = false

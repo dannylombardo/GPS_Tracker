@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.BrightnessAuto
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Garage
@@ -137,6 +138,16 @@ internal fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     value = (binnedTrips.size + binnedFuelUps.size).takeIf { it > 0 }?.toString(),
                     showChevron = true,
                     onClick = viewModel::openBin,
+                )
+                RowDivider()
+                val garage: com.dannylombardo.gpstracker.ui.garage.GarageViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+                GroupedRow(
+                    "Export & backup",
+                    icon = Icons.Rounded.Backup,
+                    iconColor = MaterialTheme.apple.indigo,
+                    subtitle = "CSV, PDF report, backup and restore",
+                    showChevron = true,
+                    onClick = { garage.open(com.dannylombardo.gpstracker.ui.garage.GaragePage.Data) },
                 )
             }
 
