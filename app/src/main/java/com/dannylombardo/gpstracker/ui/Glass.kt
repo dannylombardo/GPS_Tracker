@@ -164,6 +164,7 @@ internal fun GlassCard(
 internal fun HeroCard(
     colors: List<Color>,
     modifier: Modifier = Modifier,
+    watermark: ImageVector? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val shape = MaterialTheme.shapes.large
@@ -193,6 +194,18 @@ internal fun HeroCard(
                 shape,
             ),
     ) {
+        if (watermark != null) {
+            // A big faint symbol tucked into the corner, for a bit of character.
+            Icon(
+                watermark,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.09f),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .offset(x = 36.dp, y = 36.dp)
+                    .size(190.dp),
+            )
+        }
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp), content = content)
     }
 }

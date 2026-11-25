@@ -433,9 +433,10 @@ private fun MapAttribution(modifier: Modifier = Modifier) {
 @Composable
 private fun Summary(trip: Trip) {
     val end = trip.endTime ?: trip.startTime
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    GlassCard(contentPadding = PaddingValues(20.dp)) {
+      Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
-            BigNumber(kmNumber(trip.distanceMeters), "km", style = MaterialTheme.typography.displayMedium)
+            CountingKm(trip.distanceMeters, style = MaterialTheme.typography.displayMedium)
             Spacer(Modifier.weight(1f))
             Text(
                 formatDuration(end - trip.startTime),
@@ -455,6 +456,7 @@ private fun Summary(trip: Trip) {
             )
             TimePoint(RouteColors.end, "End", formatTime(end))
         }
+      }
     }
 }
 
@@ -475,16 +477,29 @@ private fun Stats(trip: Trip, profile: RouteProfile?) {
     val moving = profile?.movingMillis?.takeIf { it > 0 }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         StatRow {
-            StatTile(Icons.Rounded.Speed, "Average speed", formatSpeed(trip.averageSpeedMetersPerSecond), Modifier.weight(1f))
-            StatTile(Icons.AutoMirrored.Rounded.TrendingUp, "Top speed", formatSpeed(trip.topSpeedMetersPerSecond), Modifier.weight(1f))
+            StatTile(
+                Icons.Rounded.Speed,
+                "Average speed",
+                formatSpeed(trip.averageSpeedMetersPerSecond),
+                Modifier.weight(1f),
+                MaterialTheme.apple.blue,
+            )
+            StatTile(
+                Icons.AutoMirrored.Rounded.TrendingUp,
+                "Top speed",
+                formatSpeed(trip.topSpeedMetersPerSecond),
+                Modifier.weight(1f),
+                MaterialTheme.apple.red,
+            )
         }
         StatRow {
-            StatTile(Icons.Rounded.Timer, "Moving", moving?.let { formatDuration(it) } ?: "–", Modifier.weight(1f))
+            StatTile(Icons.Rounded.Timer, "Moving", moving?.let { formatDuration(it) } ?: "–", Modifier.weight(1f), MaterialTheme.apple.green)
             StatTile(
                 Icons.Rounded.PauseCircleOutline,
                 "Stopped",
                 profile?.let { formatDuration(it.stoppedMillis, zero = "0 min") } ?: "–",
                 Modifier.weight(1f),
+                MaterialTheme.apple.orange,
             )
         }
         profile?.movingAverageMetersPerSecond(trip.distanceMeters)?.let { movingAverage ->

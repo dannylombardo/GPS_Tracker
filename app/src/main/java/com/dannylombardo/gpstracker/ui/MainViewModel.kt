@@ -28,6 +28,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import com.dannylombardo.gpstracker.ui.theme.ThemeMode
+import com.dannylombardo.gpstracker.data.EveryoneWeek
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -154,6 +155,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val weekByCar: StateFlow<List<Pair<Car, Double>>> = combine(finishedTrips, cars, _weekStart) { trips, cars, start ->
         CarStats.distanceByCar(cars, WeeklySummary.of(trips, start, ZoneId.systemDefault()).trips)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** The shown week's driving by everyone, yours and someone else's, across every car. */
+    val everyoneWeek: StateFlow<EveryoneWeek?> = combine(finishedTrips, cars, _weekStart) { trips, cars, start ->
+        val zone = ZoneId.systemDefault()
+        EveryoneWeek.of(WeeklySummary.of(trips, start, zone), cars, zone)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     /** Each car's fuel economy, from only its own fill-ups and drives. */
     val economyByCar: StateFlow<Map<Long, FuelEconomy.Summary>> =

@@ -51,6 +51,7 @@ import com.dannylombardo.gpstracker.data.Car
 import com.dannylombardo.gpstracker.data.FuelEconomy
 import com.dannylombardo.gpstracker.data.FuelUp
 import com.dannylombardo.gpstracker.ui.theme.HeroColors
+import com.dannylombardo.gpstracker.ui.theme.apple
 import com.dannylombardo.gpstracker.ui.theme.tabular
 import java.time.YearMonth
 
@@ -154,7 +155,7 @@ internal fun FuelScreen(viewModel: MainViewModel, listState: LazyListState, padd
 @Composable
 private fun EconomyCard(economy: FuelEconomy.Summary, latest: FuelUp?, title: String) {
     val onHero = HeroColors.content
-    HeroCard(HeroColors.fuel) {
+    HeroCard(HeroColors.fuel, watermark = Icons.Rounded.LocalGasStation) {
         run {
             Text(title, style = MaterialTheme.typography.titleMedium, color = onHero)
             val average = economy.averageLitresPer100Km
@@ -173,7 +174,7 @@ private fun EconomyCard(economy: FuelEconomy.Summary, latest: FuelUp?, title: St
                     color = onHero,
                 )
             }
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HeroStat(
                     "Since full tank",
                     economy.distanceSinceLastFullMeters?.let(::formatKm) ?: "–",
@@ -187,7 +188,7 @@ private fun EconomyCard(economy: FuelEconomy.Summary, latest: FuelUp?, title: St
                     Modifier.weight(1f),
                 )
             }
-            Row(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HeroStat(
                     "Cost per km",
                     economy.averageCostPerKm?.let(::formatCostPerKm) ?: "–",
@@ -209,7 +210,7 @@ private fun EconomyCard(economy: FuelEconomy.Summary, latest: FuelUp?, title: St
 @Composable
 private fun AllCarsEconomyCard(cars: List<Car>, economyByCar: Map<Long, FuelEconomy.Summary>, fuelUps: List<FuelUp>) {
     val onHero = HeroColors.content
-    HeroCard(HeroColors.fuel) {
+    HeroCard(HeroColors.fuel, watermark = Icons.Rounded.LocalGasStation) {
         run {
             Text("Fuel economy by car", style = MaterialTheme.typography.titleMedium, color = onHero)
             cars.forEach { car ->
@@ -250,7 +251,7 @@ private fun AllCarsEconomyCard(cars: List<Car>, economyByCar: Map<Long, FuelEcon
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HeroStat("Spent, all cars", formatMoney(fuelUps.sumOf { it.totalCost }), onHero, Modifier.weight(1f))
                 HeroStat("Litres, all cars", formatLitres(fuelUps.sumOf { it.litres }), onHero, Modifier.weight(1f))
             }
@@ -262,12 +263,12 @@ private fun AllCarsEconomyCard(cars: List<Car>, economyByCar: Map<Long, FuelEcon
 @Composable
 private fun FuelStatsSection(economy: FuelEconomy.Summary) {
     val fuelUps = economy.fuelUps
-    val accent = MaterialTheme.colorScheme.tertiary
+    val apple = MaterialTheme.apple
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionHeader("All-time stats")
         StatRow {
-            StatTile(Icons.Rounded.Payments, "Spent on fuel", formatMoney(fuelUps.sumOf { it.totalCost }), Modifier.weight(1f), accent)
-            StatTile(Icons.Rounded.WaterDrop, "Litres bought", formatLitres(fuelUps.sumOf { it.litres }), Modifier.weight(1f), accent)
+            StatTile(Icons.Rounded.Payments, "Spent on fuel", formatMoney(fuelUps.sumOf { it.totalCost }), Modifier.weight(1f), apple.green)
+            StatTile(Icons.Rounded.WaterDrop, "Litres bought", formatLitres(fuelUps.sumOf { it.litres }), Modifier.weight(1f), apple.blue)
         }
         StatRow {
             StatTile(
@@ -275,14 +276,14 @@ private fun FuelStatsSection(economy: FuelEconomy.Summary) {
                 "Average price",
                 economy.averagePricePerLitre?.let(::formatPricePerLitre) ?: "–",
                 Modifier.weight(1f),
-                accent,
+                apple.green,
             )
             StatTile(
                 Icons.Rounded.Receipt,
                 "Average fill-up",
                 formatMoney(fuelUps.sumOf { it.totalCost } / fuelUps.size),
                 Modifier.weight(1f),
-                accent,
+                apple.teal,
             )
         }
         StatRow {
@@ -291,14 +292,14 @@ private fun FuelStatsSection(economy: FuelEconomy.Summary) {
                 "Between fill-ups",
                 economy.averageMillisBetween?.let(::formatGap) ?: "–",
                 Modifier.weight(1f),
-                accent,
+                apple.orange,
             )
             StatTile(
                 Icons.Rounded.LocalGasStation,
                 "Fill-ups",
                 fuelUps.size.toString(),
                 Modifier.weight(1f),
-                accent,
+                apple.indigo,
             )
         }
         if (economy.intervals.count { it.litresPer100Km != null } >= 2) {
@@ -308,14 +309,14 @@ private fun FuelStatsSection(economy: FuelEconomy.Summary) {
                     "Best tank",
                     economy.bestLitresPer100Km?.let(::formatConsumption) ?: "–",
                     Modifier.weight(1f),
-                    accent,
+                    apple.green,
                 )
                 StatTile(
                     Icons.Rounded.LocalFireDepartment,
                     "Worst tank",
                     economy.worstLitresPer100Km?.let(::formatConsumption) ?: "–",
                     Modifier.weight(1f),
-                    accent,
+                    apple.red,
                 )
             }
         }

@@ -276,7 +276,7 @@ internal fun CarsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
 @Composable
 private fun AllCarsCard(totals: CarStats.Totals, carCount: Int) {
     val onHero = HeroColors.content
-    HeroCard(HeroColors.drive) {
+    HeroCard(HeroColors.drive, watermark = Icons.Rounded.Garage) {
         run {
             Text(
                 if (carCount == 1) "All time" else "All $carCount cars, all time",
@@ -284,7 +284,7 @@ private fun AllCarsCard(totals: CarStats.Totals, carCount: Int) {
                 color = onHero,
             )
             BigNumber(kmNumber(totals.distanceMeters), "km", color = onHero, style = MaterialTheme.typography.displayMedium)
-            Row(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HeroStat("Drives", totals.driveCount.toString(), onHero, Modifier.weight(1f))
                 HeroStat("Spent on fuel", formatMoney(totals.moneySpent), onHero, Modifier.weight(1f))
                 HeroStat("Litres", formatLitres(totals.litres), onHero, Modifier.weight(1f))

@@ -2,6 +2,7 @@ package com.dannylombardo.gpstracker.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
@@ -261,11 +262,11 @@ fun AppTheme(mode: ThemeMode = ThemeMode.System, content: @Composable () -> Unit
     }
     val apple = if (dark) DarkApple else LightApple
     CompositionLocalProvider(LocalDarkTheme provides dark, LocalAppleColors provides apple) {
-        MaterialTheme(
-            colorScheme = if (dark) darkScheme(apple) else lightScheme(apple),
-            typography = AppTypography,
-            shapes = AppShapes,
-            content = content,
-        )
+        val scheme = if (dark) darkScheme(apple) else lightScheme(apple)
+        MaterialTheme(colorScheme = scheme, typography = AppTypography, shapes = AppShapes) {
+            // The pages are drawn on plain boxes rather than Material surfaces, so set the
+            // default text and icon colour here; otherwise it stays black, even in dark mode.
+            CompositionLocalProvider(LocalContentColor provides scheme.onSurface, content = content)
+        }
     }
 }

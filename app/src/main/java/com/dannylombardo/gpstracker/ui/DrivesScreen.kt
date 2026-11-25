@@ -100,6 +100,7 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
     val activeCar by viewModel.activeCar.collectAsStateWithLifecycle()
     val weekByCar by viewModel.weekByCar.collectAsStateWithLifecycle()
     val trips by viewModel.trips.collectAsStateWithLifecycle()
+    val everyone by viewModel.everyoneWeek.collectAsStateWithLifecycle()
     // Car names only earn their space when several cars share one list.
     val showCarNames = cars.size > 1 && viewedCarId == null
     val carNames = cars.associate { it.id to it.name }
@@ -161,6 +162,30 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
             item { AnswerBanner(unanswered.size, onClick = { viewModel.openTrip(unanswered.first().id) }) }
         }
 
+        everyone?.let { all ->
+            item(key = "everyone-title") {
+                SectionTitle(
+                    "Everyone's driving",
+                    trailing = if (isCurrentWeek) "This week" else "Week of ${formatShortDate(week.weekStart)}",
+                )
+            }
+            item(key = "everyone") {
+                EveryoneCard(
+                    all,
+                    showCars = cars.size > 1,
+                    todayIndex = if (isCurrentWeek) LocalDate.now().dayOfWeek.value - 1 else null,
+                )
+            }
+            item(key = "everyone-note") {
+                Text(
+                    "Includes drives by someone else, in every car. Your own totals above leave them out.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+        }
+
         val today = LocalDate.now()
         val todayTrips = trips.filter { localDateOf(it.startTime) == today }
         item(key = "today") { SectionTitle("Today", action = "See All", onAction = viewModel::openHistory) }
@@ -192,7 +217,7 @@ private fun WeekCard(
     onDayClick: (Int) -> Unit,
 ) {
     val onHero = HeroColors.content
-    HeroCard(HeroColors.drive) {
+    HeroCard(HeroColors.drive, watermark = Icons.Rounded.DirectionsCar) {
         run {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -211,15 +236,12 @@ private fun WeekCard(
                     contentColor = onHero,
                     disabledContentColor = onHero.copy(alpha = 0.3f),
                 )
-                IconButton(onClick = onPrevious, colors = arrowColors) {
-                    Icon(Icons.Rounded.ChevronLeft, contentDescription = "Previous week")
-                }
-                IconButton(onClick = onNext, enabled = !isCurrentWeek, colors = arrowColors) {
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = "Next week")
-                }
+                HeroArrow(Icons.Rounded.ChevronLeft, "Previous week", enabled = true, onClick = onPrevious)
+                Spacer(Modifier.width(8.dp))
+                HeroArrow(Icons.Rounded.ChevronRight, "Next week", enabled = !isCurrentWeek, onClick = onNext)
             }
 
-            BigNumber(kmNumber(week.distanceMeters), "km", color = onHero, style = MaterialTheme.typography.displayLarge)
+            CountingKm(week.distanceMeters, color = onHero)
 
             val today = LocalDate.now()
             WeekBars(
@@ -231,12 +253,12 @@ private fun WeekCard(
                 onDayClick = onDayClick,
             )
 
-            Row(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HeroStat("Drives", week.driveCount.toString(), onHero, Modifier.weight(1f))
                 HeroStat("Time", formatDuration(week.drivingMillis, zero = "0 min"), onHero, Modifier.weight(1f))
                 HeroStat("Avg speed", formatSpeed(week.averageSpeedMetersPerSecond), onHero, Modifier.weight(1f))
             }
-            Row(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HeroStat("Top speed", formatSpeed(week.topSpeedMetersPerSecond), onHero, Modifier.weight(1f))
                 HeroStat("Spent on fuel", formatMoney(week.moneySpent), onHero, Modifier.weight(1f))
                 HeroStat("Litres", formatLitres(week.litresBought), onHero, Modifier.weight(1f))
@@ -487,7 +509,7 @@ private fun LiveDriveCard(trip: Trip, cars: List<Car>, car: Car?, onPickCar: (Lo
             value = System.currentTimeMillis()
         }
     }
-    HeroCard(HeroColors.live) {
+    HeroCard(HeroColors.live, watermark = Icons.Rounded.LocationOn) {
         run {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(10.dp).alpha(dotAlpha).background(Color(0xFFFF5A4E), CircleShape))
