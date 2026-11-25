@@ -45,7 +45,7 @@ import java.util.Locale
 @Composable
 internal fun EveryoneCard(everyone: EveryoneWeek, showCars: Boolean, todayIndex: Int?) {
     val you = MaterialTheme.colorScheme.primary
-    val others = MaterialTheme.apple.orange
+    val others = MaterialTheme.apple.blue
     GlassCard(contentPadding = androidx.compose.foundation.layout.PaddingValues(20.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Row(verticalAlignment = Alignment.Bottom) {

@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -37,6 +38,10 @@ val LocalDarkTheme = staticCompositionLocalOf { false }
 /** The iOS system colours the app uses beyond the Material roles. */
 @Immutable
 data class AppleColors(
+    /** The motorsport accent: racing red. The app's tint colour. */
+    val racing: Color,
+    /** Warm amber, like a gauge's warning light; the fuel accent. */
+    val amber: Color,
     val blue: Color,
     val green: Color,
     val orange: Color,
@@ -56,6 +61,8 @@ data class AppleColors(
 )
 
 private val LightApple = AppleColors(
+    racing = Color(0xFFE10600),
+    amber = Color(0xFFF59E0B),
     blue = Color(0xFF007AFF),
     green = Color(0xFF34C759),
     orange = Color(0xFFFF9500),
@@ -72,6 +79,8 @@ private val LightApple = AppleColors(
 )
 
 private val DarkApple = AppleColors(
+    racing = Color(0xFFFF3B30),
+    amber = Color(0xFFFFB020),
     blue = Color(0xFF0A84FF),
     green = Color(0xFF30D158),
     orange = Color(0xFFFF9F0A),
@@ -79,8 +88,8 @@ private val DarkApple = AppleColors(
     teal = Color(0xFF40C8E0),
     indigo = Color(0xFF5E5CE6),
     yellow = Color(0xFFFFD60A),
-    groupedBackground = Color(0xFF000000),
-    card = Color(0xFF1C1C1E),
+    groupedBackground = Color(0xFF09090B),
+    card = Color(0xFF1A1A1E),
     fill = Color(0xFF2C2C2E),
     separator = Color(0xFF38383A),
     secondaryLabel = Color(0xFF98989F),
@@ -94,10 +103,10 @@ val MaterialTheme.apple: AppleColors
     @Composable get() = LocalAppleColors.current
 
 private fun lightScheme(c: AppleColors) = lightColorScheme(
-    primary = c.blue,
+    primary = c.racing,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE3EFFF),
-    onPrimaryContainer = Color(0xFF0060CC),
+    primaryContainer = Color(0xFFFFE4E1),
+    onPrimaryContainer = Color(0xFFB00500),
     secondary = c.secondaryLabel,
     onSecondary = Color.White,
     secondaryContainer = c.fill,
@@ -120,7 +129,7 @@ private fun lightScheme(c: AppleColors) = lightColorScheme(
     outlineVariant = c.separator,
     inverseSurface = Color(0xFF1C1C1E),
     inverseOnSurface = Color.White,
-    inversePrimary = Color(0xFF0A84FF),
+    inversePrimary = Color(0xFFFF3B30),
     surfaceTint = Color.Transparent,
     scrim = Color.Black,
     surfaceBright = c.card,
@@ -133,10 +142,10 @@ private fun lightScheme(c: AppleColors) = lightColorScheme(
 )
 
 private fun darkScheme(c: AppleColors) = darkColorScheme(
-    primary = c.blue,
+    primary = c.racing,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFF0B2A4F),
-    onPrimaryContainer = Color(0xFF7AB8FF),
+    primaryContainer = Color(0xFF3D0F0C),
+    onPrimaryContainer = Color(0xFFFF9A90),
     secondary = c.secondaryLabel,
     onSecondary = Color.Black,
     secondaryContainer = c.fill,
@@ -159,7 +168,7 @@ private fun darkScheme(c: AppleColors) = darkColorScheme(
     outlineVariant = c.separator,
     inverseSurface = Color(0xFFF2F2F7),
     inverseOnSurface = Color.Black,
-    inversePrimary = Color(0xFF007AFF),
+    inversePrimary = Color(0xFFE10600),
     surfaceTint = Color.Transparent,
     scrim = Color.Black,
     surfaceBright = Color(0xFF2C2C2E),
@@ -185,11 +194,14 @@ object SpeedColors {
     val fastest = Color(0xFF8E44E0)
 }
 
-/** The coloured headline cards: blue for driving, teal for fuel, green while recording. Same in light and dark. */
+/** The coloured headline cards: racing red for driving, amber for fuel, green while recording. Same in light and dark. */
 object HeroColors {
-    val drive = listOf(Color(0xFF2F8CFF), Color(0xFF3F4FD8))
-    val fuel = listOf(Color(0xFF1EB6C9), Color(0xFF0E7F8F))
-    val live = listOf(Color(0xFF3ACB63), Color(0xFF178A44))
+    val drive = listOf(Color(0xFFFF4433), Color(0xFFC1061B), Color(0xFF6E0414))
+    val fuel = listOf(Color(0xFFFFB627), Color(0xFFF2700D), Color(0xFFB3360B))
+    val live = listOf(Color(0xFF22D46B), Color(0xFF0B8F4A), Color(0xFF064D2B))
+
+    /** Carbon: near-black graphite, for cards that should look like a dashboard. */
+    val carbon = listOf(Color(0xFF2B2B31), Color(0xFF151518), Color(0xFF0B0B0D))
     val content = Color.White
 }
 
@@ -225,10 +237,11 @@ private fun style(
  * semibold, Body 17, Subheadline 15, Footnote 13, Caption 12 and 11.
  */
 private val AppTypography = Typography(
-    displayLarge = style(InterDisplay, 56, 60, FontWeight.Bold, (-1.2).sp),
-    displayMedium = style(InterDisplay, 44, 50, FontWeight.Bold, (-0.9).sp),
-    displaySmall = style(InterDisplay, 36, 42, FontWeight.Bold, (-0.6).sp),
-    headlineLarge = style(InterDisplay, 34, 41, FontWeight.Bold, (-0.5).sp),
+    // The big numbers and page titles lean forward like a race car's livery.
+    displayLarge = style(InterDisplay, 58, 62, FontWeight.Bold, (-1.4).sp).copy(fontStyle = FontStyle.Italic),
+    displayMedium = style(InterDisplay, 46, 50, FontWeight.Bold, (-1.0).sp).copy(fontStyle = FontStyle.Italic),
+    displaySmall = style(InterDisplay, 36, 42, FontWeight.Bold, (-0.7).sp).copy(fontStyle = FontStyle.Italic),
+    headlineLarge = style(InterDisplay, 34, 41, FontWeight.Bold, (-0.6).sp).copy(fontStyle = FontStyle.Italic),
     headlineMedium = style(InterDisplay, 28, 34, FontWeight.Bold, (-0.4).sp),
     headlineSmall = style(InterDisplay, 22, 28, FontWeight.Bold, (-0.3).sp),
     titleLarge = style(Inter, 20, 25, FontWeight.SemiBold, (-0.4).sp),

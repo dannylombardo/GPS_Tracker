@@ -60,7 +60,15 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -185,6 +193,22 @@ internal fun HeroCard(
                     radius = size.width * 0.8f,
                     center = Offset(size.width * 0.15f, 0f),
                 )
+                // Twin racing stripes running across the card.
+                val stripe = Color.White.copy(alpha = 0.10f)
+                val wide = 26.dp.toPx()
+                val thin = 9.dp.toPx()
+                val gap = 8.dp.toPx()
+                val lean = size.height * 0.35f
+                val start = size.width * 0.58f
+                fun band(x: Float, w: Float) = Path().apply {
+                    moveTo(x + lean, 0f)
+                    lineTo(x + lean + w, 0f)
+                    lineTo(x + w, size.height)
+                    lineTo(x, size.height)
+                    close()
+                }
+                drawPath(band(start, wide), stripe)
+                drawPath(band(start + wide + gap, thin), stripe)
             }
             .border(
                 BorderStroke(
@@ -215,14 +239,17 @@ internal fun HeroCard(
 internal fun AppBackground(modifier: Modifier = Modifier) {
     val apple = MaterialTheme.apple
     val dark = LocalDarkTheme.current
-    val blue = apple.blue.copy(alpha = if (dark) 0.22f else 0.14f)
-    val teal = apple.teal.copy(alpha = if (dark) 0.14f else 0.12f)
-    val indigo = apple.indigo.copy(alpha = if (dark) 0.16f else 0.08f)
+    val blue = apple.racing.copy(alpha = if (dark) 0.20f else 0.10f)
+    val teal = apple.amber.copy(alpha = if (dark) 0.12f else 0.10f)
+    val indigo = apple.indigo.copy(alpha = if (dark) 0.12f else 0.06f)
+    // Carbon-fibre weave: a tiny tile drawn once and repeated across the page.
+    val weave = remember(dark) { carbonBrush(dark) }
     Box(
         modifier
             .fillMaxSize()
             .background(apple.groupedBackground)
             .drawBehind {
+                drawRect(weave)
                 val r = size.width * 0.9f
                 drawCircle(Brush.radialGradient(listOf(blue, Color.Transparent), Offset(0f, 0f), r), r, Offset(0f, 0f))
                 drawCircle(
@@ -237,6 +264,22 @@ internal fun AppBackground(modifier: Modifier = Modifier) {
                 )
             },
     )
+}
+
+/** A repeating twill weave like carbon fibre: strong in dark mode, barely there in light. */
+private fun carbonBrush(dark: Boolean): ShaderBrush {
+    val cell = 6
+    val size = cell * 2
+    val bitmap = ImageBitmap(size, size)
+    val canvas = Canvas(bitmap)
+    val light = Paint().apply { color = if (dark) Color.White.copy(alpha = 0.035f) else Color.Black.copy(alpha = 0.018f) }
+    val shade = Paint().apply { color = if (dark) Color.Black.copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.0f) }
+    // Two cells lit with a sheen across them, two in shadow: the over-under of a 2x2 twill.
+    canvas.drawRect(0f, 0f, cell.toFloat(), cell.toFloat(), light)
+    canvas.drawRect(cell.toFloat(), cell.toFloat(), size.toFloat(), size.toFloat(), light)
+    canvas.drawRect(cell.toFloat(), 0f, size.toFloat(), cell.toFloat(), shade)
+    canvas.drawRect(0f, cell.toFloat(), cell.toFloat(), size.toFloat(), shade)
+    return ShaderBrush(ImageShader(bitmap, TileMode.Repeated, TileMode.Repeated))
 }
 
 /** True once a list has scrolled past its first few pixels. */
@@ -666,8 +709,19 @@ internal fun SectionTitle(
     action: String? = null,
     onAction: (() -> Unit)? = null,
 ) {
-    Row(modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 14.dp), verticalAlignment = Alignment.Bottom) {
-        Text(text, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+    Row(modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        // A short red flash before the title, like a race team's livery.
+        Box(
+            Modifier
+                .padding(end = 10.dp)
+                .size(width = 4.dp, height = 20.dp)
+                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)),
+        )
+        Text(
+            text,
+            style = MaterialTheme.typography.titleLarge.copy(fontStyle = FontStyle.Italic),
+            modifier = Modifier.weight(1f),
+        )
         if (trailing != null) {
             Text(
                 trailing,
