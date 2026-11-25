@@ -42,6 +42,7 @@ import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -365,6 +366,7 @@ internal fun DriveRow(trip: Trip, carName: String?, viewModel: MainViewModel, on
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
+                    .sharedElementBounds(driveMapKey(trip.id))
                     .size(64.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.apple.fill),
@@ -526,14 +528,26 @@ private fun LiveDriveCard(trip: Trip, cars: List<Car>, car: Car?, onPickCar: (Lo
             if (cars.size > 1) {
                 ActiveCarPicker("In", cars, car, onPick = onPickCar, color = onHero, modifier = Modifier.offset(x = (-8).dp))
             }
-            PrimaryButton(
-                "End drive",
-                onClick = onEndDrive,
-                icon = Icons.Rounded.Stop,
-                container = onHero,
-                content = HeroColors.live.last(),
-                modifier = Modifier.fillMaxWidth(),
-            )
+            // The live dash: big speedometer, trip meter and speed trace.
+            val garage: com.dannylombardo.gpstracker.ui.garage.GarageViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PrimaryButton(
+                    "Live dash",
+                    onClick = { garage.open(com.dannylombardo.gpstracker.ui.garage.GaragePage.Live) },
+                    icon = Icons.Rounded.Speed,
+                    container = onHero.copy(alpha = 0.2f),
+                    content = onHero,
+                    modifier = Modifier.weight(1f),
+                )
+                PrimaryButton(
+                    "End drive",
+                    onClick = onEndDrive,
+                    icon = Icons.Rounded.Stop,
+                    container = onHero,
+                    content = HeroColors.live.last(),
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }

@@ -3,6 +3,9 @@ package com.dannylombardo.gpstracker.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -98,6 +101,7 @@ private sealed interface Page {
 }
 
 /** The two tabs, with the other pages sliding in over them when opened. */
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun AppRoot(viewModel: MainViewModel, garage: GarageViewModel) {
     val openTripId by viewModel.openTripId.collectAsStateWithLifecycle()
@@ -168,6 +172,9 @@ fun AppRoot(viewModel: MainViewModel, garage: GarageViewModel) {
     }
 
     Box(Modifier.fillMaxSize()) {
+        // Lets a drive's route thumbnail grow into its map when the drive opens, and shrink back.
+        SharedTransitionLayout {
+        CompositionLocalProvider(LocalSharedTransitions provides this) {
         AnimatedContent(
             targetState = page,
             transitionSpec = {
@@ -183,6 +190,7 @@ fun AppRoot(viewModel: MainViewModel, garage: GarageViewModel) {
             },
             label = "page",
         ) { shownPage ->
+            CompositionLocalProvider(LocalPageVisibility provides this) {
             when (shownPage) {
                 is Page.Drive -> DriveDetailScreen(tripId = shownPage.tripId, viewModel = viewModel, onBack = viewModel::closeTrip)
                 Page.Cars -> CarsScreen(viewModel = viewModel, onBack = viewModel::closeCars)
@@ -201,6 +209,9 @@ fun AppRoot(viewModel: MainViewModel, garage: GarageViewModel) {
                     garage = garage,
                 )
             }
+        }
+            }
+        }
         }
 
         // The fill-up form slides up as a sheet over whatever page is showing.

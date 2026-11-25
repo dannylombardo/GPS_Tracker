@@ -197,6 +197,7 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
                 ) {
                     if (trip.deletedAt != null) BinnedNotice(trip.deletedAt)
                     MapPreview(
+                        trip.id,
                         route,
                         selectedTime = selectedTime,
                         onSelect = { selectedTime = it },
@@ -239,9 +240,9 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
 }
 
 @Composable
-private fun MapPreview(route: RouteData?, selectedTime: Long?, onSelect: (Long) -> Unit, onExpand: () -> Unit) {
+private fun MapPreview(tripId: Long, route: RouteData?, selectedTime: Long?, onSelect: (Long) -> Unit, onExpand: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        MapBox(route, selectedTime, onExpand)
+        MapBox(tripId, route, selectedTime, onExpand)
         if (route != null && route.canScrub) {
             DriveSlider(route.profile, selectedTime, onSelect)
         }
@@ -249,9 +250,11 @@ private fun MapPreview(route: RouteData?, selectedTime: Long?, onSelect: (Long) 
 }
 
 @Composable
-private fun MapBox(route: RouteData?, selectedTime: Long?, onExpand: () -> Unit) {
+private fun MapBox(tripId: Long, route: RouteData?, selectedTime: Long?, onExpand: () -> Unit) {
     Box(
         Modifier
+            // Grows out of the route thumbnail on the drive's row.
+            .sharedElementBounds(driveMapKey(tripId))
             .fillMaxWidth()
             .height(260.dp)
             .clip(MaterialTheme.shapes.large)
