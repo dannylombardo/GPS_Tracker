@@ -10,6 +10,7 @@ object TrackingPrefs {
     private const val KEY_SPOT_STATIONS = "spot_gas_stations"
     private const val KEY_ACTIVE_CAR = "active_car"
     private const val KEY_VIEWED_CAR = "viewed_car"
+    private const val KEY_FALSE_START_AT = "false_start_at"
 
     fun isAutoTrackEnabled(context: Context): Boolean =
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_AUTO_TRACK, false)
@@ -41,4 +42,12 @@ object TrackingPrefs {
     fun setViewedCarId(context: Context, carId: Long?) {
         context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit { putLong(KEY_VIEWED_CAR, carId ?: -1) }
     }
+
+    /** Remembers when GPS last checked a possible drive and found we weren't driving. */
+    fun setFalseStartAt(context: Context, timeMillis: Long) {
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit { putLong(KEY_FALSE_START_AT, timeMillis) }
+    }
+
+    fun falseStartAt(context: Context): Long =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getLong(KEY_FALSE_START_AT, 0)
 }
