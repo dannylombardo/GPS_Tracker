@@ -3,12 +3,18 @@ package com.dannylombardo.gpstracker.ui
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.graphics.Color
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dannylombardo.gpstracker.tracking.FuelPrompt
 import com.dannylombardo.gpstracker.ui.theme.AppTheme
+import com.dannylombardo.gpstracker.ui.theme.LocalDarkTheme
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
@@ -19,7 +25,19 @@ class MainActivity : ComponentActivity() {
         // On recreation (e.g. rotation) the view model still has any open fill-up form or drive.
         if (savedInstanceState == null) handle(intent)
         setContent {
-            AppTheme {
+            val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+            AppTheme(themeMode) {
+                // Status and navigation bar icons follow the app's theme, which can differ from the phone's.
+                val dark = LocalDarkTheme.current
+                DisposableEffect(dark) {
+                    val style = if (dark) {
+                        SystemBarStyle.dark(Color.TRANSPARENT)
+                    } else {
+                        SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                    }
+                    enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                    onDispose { }
+                }
                 AppRoot(viewModel)
             }
         }

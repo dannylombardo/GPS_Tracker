@@ -81,9 +81,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.rememberScrollState
 import com.dannylombardo.gpstracker.data.Car
+import com.dannylombardo.gpstracker.tracking.Permissions
 import com.dannylombardo.gpstracker.data.Trip
 import com.dannylombardo.gpstracker.data.WeeklySummary
 import com.dannylombardo.gpstracker.ui.theme.HeroColors
+import com.dannylombardo.gpstracker.ui.theme.apple
 import com.dannylombardo.gpstracker.ui.theme.tabular
 import kotlinx.coroutines.delay
 import java.time.LocalDate
@@ -99,6 +101,7 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
     val activeCar by viewModel.activeCar.collectAsStateWithLifecycle()
     val weekByCar by viewModel.weekByCar.collectAsStateWithLifecycle()
     val trips by viewModel.trips.collectAsStateWithLifecycle()
+    val everyone by viewModel.everyoneWeek.collectAsStateWithLifecycle()
     // Car names only earn their space when several cars share one list.
     val showCarNames = cars.size > 1 && viewedCarId == null
     val carNames = cars.associate { it.id to it.name }
@@ -160,9 +163,33 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
             item { AnswerBanner(unanswered.size, onClick = { viewModel.openTrip(unanswered.first().id) }) }
         }
 
+        everyone?.let { all ->
+            item(key = "everyone-title") {
+                SectionTitle(
+                    "Everyone's driving",
+                    trailing = if (isCurrentWeek) "This week" else "Week of ${formatShortDate(week.weekStart)}",
+                )
+            }
+            item(key = "everyone") {
+                EveryoneCard(
+                    all,
+                    showCars = cars.size > 1,
+                    todayIndex = if (isCurrentWeek) LocalDate.now().dayOfWeek.value - 1 else null,
+                )
+            }
+            item(key = "everyone-note") {
+                Text(
+                    "Includes drives by someone else, in every car. Your own totals above leave them out.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+        }
+
         val today = LocalDate.now()
         val todayTrips = trips.filter { localDateOf(it.startTime) == today }
-        item(key = "today") { SectionHeader("Today") }
+        item(key = "today") { SectionTitle("Today", action = "See All", onAction = viewModel::openHistory) }
         if (todayTrips.isEmpty()) {
             item(key = "today-empty") { EmptyToday(hasOlderDrives = trips.isNotEmpty()) }
         } else {
@@ -175,13 +202,6 @@ internal fun DrivesScreen(viewModel: MainViewModel, listState: LazyListState, pa
                         onClick = { viewModel.openTrip(trip.id) },
                     )
                 }
-            }
-        }
-        item(key = "see-all") {
-            FilledTonalButton(onClick = viewModel::openHistory, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                Icon(Icons.Rounded.History, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("See all drives")
             }
         }
     }
@@ -198,13 +218,8 @@ private fun WeekCard(
     onDayClick: (Int) -> Unit,
 ) {
     val onHero = HeroColors.content
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(Brush.linearGradient(HeroColors.drive)),
-    ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    HeroCard(HeroColors.drive, watermark = Icons.Rounded.DirectionsCar) {
+        run {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -222,15 +237,12 @@ private fun WeekCard(
                     contentColor = onHero,
                     disabledContentColor = onHero.copy(alpha = 0.3f),
                 )
-                IconButton(onClick = onPrevious, colors = arrowColors) {
-                    Icon(Icons.Rounded.ChevronLeft, contentDescription = "Previous week")
-                }
-                IconButton(onClick = onNext, enabled = !isCurrentWeek, colors = arrowColors) {
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = "Next week")
-                }
+                HeroArrow(Icons.Rounded.ChevronLeft, "Previous week", enabled = true, onClick = onPrevious)
+                Spacer(Modifier.width(8.dp))
+                HeroArrow(Icons.Rounded.ChevronRight, "Next week", enabled = !isCurrentWeek, onClick = onNext)
             }
 
-            BigNumber(kmNumber(week.distanceMeters), "km", color = onHero, style = MaterialTheme.typography.displayLarge)
+            CountingKm(week.distanceMeters, color = onHero)
 
             val today = LocalDate.now()
             WeekBars(
@@ -242,12 +254,12 @@ private fun WeekCard(
                 onDayClick = onDayClick,
             )
 
-            Row(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HeroStat("Drives", week.driveCount.toString(), onHero, Modifier.weight(1f))
                 HeroStat("Time", formatDuration(week.drivingMillis, zero = "0 min"), onHero, Modifier.weight(1f))
                 HeroStat("Avg speed", formatSpeed(week.averageSpeedMetersPerSecond), onHero, Modifier.weight(1f))
             }
-            Row(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HeroStat("Top speed", formatSpeed(week.topSpeedMetersPerSecond), onHero, Modifier.weight(1f))
                 HeroStat("Spent on fuel", formatMoney(week.moneySpent), onHero, Modifier.weight(1f))
                 HeroStat("Litres", formatLitres(week.litresBought), onHero, Modifier.weight(1f))
@@ -311,24 +323,31 @@ private fun carShadeAlpha(index: Int): Float = (0.95f - index * 0.25f).coerceAtL
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AnswerBanner(count: Int, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.AutoMirrored.Rounded.HelpOutline, contentDescription = null)
-            Spacer(Modifier.width(12.dp))
+    GlassCard(onClick = onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBadge(
+                Icons.AutoMirrored.Rounded.HelpOutline,
+                container = MaterialTheme.apple.orange,
+                content = Color.White,
+                size = 36.dp,
+            )
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     if (count == 1) "1 drive needs an answer" else "$count drives need an answer",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                 )
-                Text("Were you driving? Until you say, they count as yours.", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Were you driving? Until you say, they count as yours.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null)
+            Icon(
+                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.apple.tertiaryLabel,
+            )
         }
     }
 }
@@ -338,17 +357,17 @@ private fun AnswerBanner(count: Int, onClick: () -> Unit) {
 internal fun DriveRow(trip: Trip, carName: String?, viewModel: MainViewModel, onClick: () -> Unit) {
     val end = trip.endTime ?: trip.startTime
     val route by produceState<List<LatLon>?>(null, trip.id) { value = viewModel.routePreview(trip.id) }
-    Card(
+    GlassCard(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().alpha(if (trip.countsAsMine) 1f else 0.55f),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = Modifier.alpha(if (trip.countsAsMine) 1f else 0.55f),
+        contentPadding = PaddingValues(12.dp),
     ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 Modifier
                     .size(64.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.apple.fill),
                 contentAlignment = Alignment.Center,
             ) {
                 val points = route
@@ -375,7 +394,7 @@ internal fun DriveRow(trip: Trip, carName: String?, viewModel: MainViewModel, on
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 when (trip.isMine) {
-                    null -> Pill("Who drove?", MaterialTheme.colorScheme.tertiaryContainer, MaterialTheme.colorScheme.onTertiaryContainer)
+                    null -> Pill("Who drove?", MaterialTheme.apple.orange.copy(alpha = 0.16f), MaterialTheme.apple.orange)
                     false -> Pill("Someone else", MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant)
                     true -> Unit
                 }
@@ -448,13 +467,13 @@ internal fun SwipeToBin(onBin: () -> Unit, modifier: Modifier = Modifier, conten
         backgroundContent = {
             val swiping = state.dismissDirection != SwipeToDismissBoxValue.Settled
             val color by animateColorAsState(
-                if (swiping) MaterialTheme.colorScheme.errorContainer else Color.Transparent,
+                if (swiping) MaterialTheme.apple.red else Color.Transparent,
                 label = "swipe",
             )
             Box(
                 Modifier
                     .fillMaxSize()
-                    .clip(CardDefaults.shape)
+                    .clip(MaterialTheme.shapes.medium)
                     .background(color)
                     .padding(horizontal = 24.dp),
                 contentAlignment = if (state.dismissDirection == SwipeToDismissBoxValue.StartToEnd) {
@@ -465,8 +484,8 @@ internal fun SwipeToBin(onBin: () -> Unit, modifier: Modifier = Modifier, conten
             ) {
                 if (swiping) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Outlined.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
-                        Text("Delete", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Icon(Icons.Outlined.Delete, contentDescription = null, tint = Color.White)
+                        Text("Delete", style = MaterialTheme.typography.labelMedium, color = Color.White)
                     }
                 }
             }
@@ -491,13 +510,8 @@ private fun LiveDriveCard(trip: Trip, cars: List<Car>, car: Car?, onPickCar: (Lo
             value = System.currentTimeMillis()
         }
     }
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(Brush.linearGradient(HeroColors.live)),
-    ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    HeroCard(HeroColors.live, watermark = Icons.Rounded.LocationOn) {
+        run {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(10.dp).alpha(dotAlpha).background(Color(0xFFFF5A4E), CircleShape))
                 Spacer(Modifier.width(8.dp))
@@ -512,14 +526,14 @@ private fun LiveDriveCard(trip: Trip, cars: List<Car>, car: Car?, onPickCar: (Lo
             if (cars.size > 1) {
                 ActiveCarPicker("In", cars, car, onPick = onPickCar, color = onHero, modifier = Modifier.offset(x = (-8).dp))
             }
-            Button(
+            PrimaryButton(
+                "End drive",
                 onClick = onEndDrive,
-                colors = ButtonDefaults.buttonColors(containerColor = onHero, contentColor = HeroColors.live.last()),
-            ) {
-                Icon(Icons.Rounded.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("End drive")
-            }
+                icon = Icons.Rounded.Stop,
+                container = onHero,
+                content = HeroColors.live.last(),
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -535,16 +549,13 @@ private fun TrackingCard(
     onStartDrive: () -> Unit,
 ) {
     val on = autoTrack && canAutoTrack
-    Card(
-        Modifier.fillMaxWidth().animateContentSize(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)) {
+    GlassCard(Modifier.animateContentSize()) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconBadge(
                     Icons.Rounded.DirectionsCar,
-                    container = if (on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-                    content = if (on) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    container = if (on) MaterialTheme.apple.green else MaterialTheme.apple.fill,
+                    content = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
@@ -559,18 +570,18 @@ private fun TrackingCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(checked = on, enabled = canAutoTrack, onCheckedChange = onAutoTrackChange)
+                AppSwitch(checked = on, enabled = canAutoTrack, onCheckedChange = onAutoTrackChange)
             }
-            Column(Modifier.padding(start = 42.dp)) {
-                if (cars.size > 1) {
-                    ActiveCarPicker("Drives go to", cars, activeCar, onPick = onPickCar)
-                }
-                TextButton(onClick = onStartDrive, enabled = canAutoTrack) {
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("Start a drive now")
-                }
+            if (cars.size > 1) {
+                ActiveCarPicker("Drives go to", cars, activeCar, onPick = onPickCar, modifier = Modifier.offset(x = (-8).dp))
             }
+            TintedButton(
+                "Start a drive now",
+                onClick = onStartDrive,
+                icon = Icons.Rounded.PlayArrow,
+                enabled = canAutoTrack,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -590,14 +601,8 @@ private fun SetupCard(permissions: PermissionState, onChanged: () -> Unit) {
         else -> 3
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        ),
-    ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    GlassCard(contentPadding = PaddingValues(20.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Set up drive tracking", style = MaterialTheme.typography.titleLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 repeat(3) { index ->
@@ -606,7 +611,7 @@ private fun SetupCard(permissions: PermissionState, onChanged: () -> Unit) {
                             .weight(1f)
                             .height(4.dp)
                             .background(
-                                if (index < step) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                if (index < step) MaterialTheme.colorScheme.primary else MaterialTheme.apple.fill,
                                 CircleShape,
                             ),
                     )
@@ -624,6 +629,8 @@ private fun SetupCard(permissions: PermissionState, onChanged: () -> Unit) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             add(Manifest.permission.POST_NOTIFICATIONS)
                         }
+                        // Optional: lets a drive start the moment the car's Bluetooth connects.
+                        addAll(Permissions.bluetoothPermissions)
                     }
                     requestMany.launch(wanted.toTypedArray())
                 }
@@ -631,15 +638,18 @@ private fun SetupCard(permissions: PermissionState, onChanged: () -> Unit) {
                     requestOne.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
                 }
             }
-            Text(explanation, style = MaterialTheme.typography.bodyMedium)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Button(onClick = action) { Text("Allow") }
-                Spacer(Modifier.width(8.dp))
-                FilledTonalButton(onClick = {
-                    context.startActivity(
-                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
-                    )
-                }) { Text("Open settings") }
+            Text(explanation, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PrimaryButton("Allow", onClick = action, modifier = Modifier.weight(1f))
+                TintedButton(
+                    "Open settings",
+                    onClick = {
+                        context.startActivity(
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }

@@ -3,7 +3,6 @@ package com.dannylombardo.gpstracker.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -71,6 +70,15 @@ import com.dannylombardo.gpstracker.data.SpeedBand
 import com.dannylombardo.gpstracker.data.SpeedRuns
 import com.dannylombardo.gpstracker.data.Trip
 import com.dannylombardo.gpstracker.ui.theme.RouteColors
+import com.dannylombardo.gpstracker.ui.theme.HeroColors
+import androidx.compose.ui.text.font.FontStyle
+import com.dannylombardo.gpstracker.ui.theme.LocalDarkTheme
+import com.dannylombardo.gpstracker.ui.theme.apple
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.rounded.OpenInFull
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.ui.draw.shadow
 import com.dannylombardo.gpstracker.ui.theme.tabular
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
@@ -147,36 +155,27 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
     var fullMap by remember { mutableStateOf(false) }
     // The moment picked on the speed chart or the map slider; both show it and both move it.
     var selectedTime by remember(tripId) { mutableStateOf<Long?>(null) }
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val scroll = rememberScrollState()
     val trip = loaded?.trip
 
     // The full screen map is drawn over the page rather than in a dialog window, so it gets
     // the real system bar insets and its slider sits above the navigation bar.
     Box(Modifier.fillMaxSize()) {
-        Scaffold(
-            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-            topBar = {
-                TopAppBar(
-                    title = { Text(trip?.let { formatDayAndDate(it.startTime) } ?: "Drive") },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-                        }
-                    },
-                    actions = {
-                        if (trip?.deletedAt != null) {
-                            TextButton(onClick = { viewModel.restoreTrip(trip.id) }) { Text("Restore") }
-                        } else if (trip != null) {
-                            IconButton(onClick = { viewModel.moveToBin(trip.id) }) {
-                                Icon(Icons.Outlined.Delete, contentDescription = "Delete drive")
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    ),
-                    scrollBehavior = scrollBehavior,
-                )
+        PageScaffold(
+            title = trip?.let { formatDayAndDate(it.startTime) } ?: "Drive",
+            scrolled = scroll.value > 0,
+            onBack = onBack,
+            actions = {
+                if (trip?.deletedAt != null) {
+                    GlassTextButton("Restore", onClick = { viewModel.restoreTrip(trip.id) })
+                } else if (trip != null) {
+                    GlassIconButton(
+                        Icons.Outlined.Delete,
+                        contentDescription = "Delete drive",
+                        onClick = { viewModel.moveToBin(trip.id) },
+                        tint = MaterialTheme.apple.red,
+                    )
+                }
             },
         ) { padding ->
             when {
@@ -191,9 +190,9 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
                 else -> Column(
                     Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(scroll)
                         .padding(padding)
-                        .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     if (trip.deletedAt != null) BinnedNotice(trip.deletedAt)
@@ -218,7 +217,7 @@ internal fun DriveDetailScreen(tripId: Long, viewModel: MainViewModel, onBack: (
                         CarCard(cars, trip.carId, onPick = { viewModel.setTripCar(trip.id, it) })
                     }
                     if (fuelUps.isNotEmpty()) {
-                        SectionHeader("Filled up on this drive")
+                        SectionTitle("Filled up on this drive")
                         fuelUps.forEach { fuelUp ->
                             FuelUpRow(fuelUp, fuelUpStats[fuelUp.id], onClick = { viewModel.openFuelUp(fuelUp) })
                         }
@@ -256,7 +255,8 @@ private fun MapBox(route: RouteData?, selectedTime: Long?, onExpand: () -> Unit)
             .fillMaxWidth()
             .height(260.dp)
             .clip(MaterialTheme.shapes.large)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            .background(MaterialTheme.apple.fill)
+            .border(glassEdge(), MaterialTheme.shapes.large),
         contentAlignment = Alignment.Center,
     ) {
         when {
@@ -273,20 +273,22 @@ private fun MapBox(route: RouteData?, selectedTime: Long?, onExpand: () -> Unit)
                 RouteMap(
                     points = route.points,
                     routeColor = MaterialTheme.colorScheme.primary,
-                    dark = isSystemInDarkTheme(),
+                    dark = LocalDarkTheme.current,
                     modifier = Modifier.fillMaxSize(),
                     stretches = route.stretches,
                     marker = route.markerAt(selectedTime),
                 )
                 // Keeps the preview still while the page scrolls; a tap opens the full map.
                 Box(Modifier.matchParentSize().clickable(onClick = onExpand))
-                FilledTonalIconButton(
+                GlassIconButton(
+                    Icons.Rounded.OpenInFull,
+                    contentDescription = "Full screen map",
                     onClick = onExpand,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
-                ) {
-                    Icon(Icons.Rounded.Fullscreen, contentDescription = "Full screen map")
-                }
-                SpeedLegend(Modifier.align(Alignment.TopStart).padding(8.dp))
+                    modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
+                    size = 36.dp,
+                    iconSize = 18.dp,
+                )
+                SpeedLegend(Modifier.align(Alignment.TopStart).padding(10.dp))
                 MapAttribution(Modifier.align(Alignment.BottomStart))
             }
         }
@@ -300,28 +302,29 @@ private fun FullScreenMap(route: RouteData, selectedTime: Long?, onSelect: (Long
         RouteMap(
             points = route.points,
             routeColor = MaterialTheme.colorScheme.primary,
-            dark = isSystemInDarkTheme(),
+            dark = LocalDarkTheme.current,
             modifier = Modifier.fillMaxSize(),
             stretches = route.stretches,
             marker = route.markerAt(selectedTime),
         )
         SpeedLegend(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(12.dp))
-        FilledTonalIconButton(
+        GlassIconButton(
+            Icons.Rounded.Close,
+            contentDescription = "Close map",
             onClick = onClose,
             modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(12.dp),
-        ) {
-            Icon(Icons.Rounded.Close, contentDescription = "Close map")
-        }
+        )
         Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding()) {
             MapAttribution()
             if (route.canScrub) {
-                Surface(
+                GlassCard(
+                    modifier = Modifier
+                        .padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
+                        .shadow(16.dp, MaterialTheme.shapes.large),
                     shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    shadowElevation = 4.dp,
-                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp),
                 ) {
-                    DriveSlider(route.profile, selectedTime, onSelect, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
+                    DriveSlider(route.profile, selectedTime, onSelect)
                 }
             }
         }
@@ -357,6 +360,11 @@ private fun DriveSlider(
         Slider(
             value = fraction,
             onValueChange = { onSelect(start + (it * span).toLong()) },
+            colors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
+                inactiveTrackColor = MaterialTheme.apple.fill,
+            ),
         )
     }
 }
@@ -383,8 +391,10 @@ private fun MomentReadout(profile: RouteProfile, time: Long, modifier: Modifier 
 private fun SpeedLegend(modifier: Modifier = Modifier) {
     Row(
         modifier
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), CircleShape)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
+            .shadow(6.dp, CircleShape)
+            .background(glassFill(), CircleShape)
+            .border(glassEdge(strong = true), CircleShape)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -425,9 +435,10 @@ private fun MapAttribution(modifier: Modifier = Modifier) {
 @Composable
 private fun Summary(trip: Trip) {
     val end = trip.endTime ?: trip.startTime
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    GlassCard(contentPadding = PaddingValues(20.dp)) {
+      Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
-            BigNumber(kmNumber(trip.distanceMeters), "km", style = MaterialTheme.typography.displayMedium)
+            CountingKm(trip.distanceMeters, style = MaterialTheme.typography.displayMedium)
             Spacer(Modifier.weight(1f))
             Text(
                 formatDuration(end - trip.startTime),
@@ -447,6 +458,7 @@ private fun Summary(trip: Trip) {
             )
             TimePoint(RouteColors.end, "End", formatTime(end))
         }
+      }
     }
 }
 
@@ -466,17 +478,31 @@ private fun TimePoint(color: Color, label: String, time: String) {
 private fun Stats(trip: Trip, profile: RouteProfile?) {
     val moving = profile?.movingMillis?.takeIf { it > 0 }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        trip.topSpeedMetersPerSecond?.let { top -> Dash(top * 3.6, trip.averageSpeedMetersPerSecond?.times(3.6)) }
         StatRow {
-            StatTile(Icons.Rounded.Speed, "Average speed", formatSpeed(trip.averageSpeedMetersPerSecond), Modifier.weight(1f))
-            StatTile(Icons.AutoMirrored.Rounded.TrendingUp, "Top speed", formatSpeed(trip.topSpeedMetersPerSecond), Modifier.weight(1f))
+            StatTile(
+                Icons.Rounded.Speed,
+                "Average speed",
+                formatSpeed(trip.averageSpeedMetersPerSecond),
+                Modifier.weight(1f),
+                MaterialTheme.apple.blue,
+            )
+            StatTile(
+                Icons.AutoMirrored.Rounded.TrendingUp,
+                "Top speed",
+                formatSpeed(trip.topSpeedMetersPerSecond),
+                Modifier.weight(1f),
+                MaterialTheme.apple.red,
+            )
         }
         StatRow {
-            StatTile(Icons.Rounded.Timer, "Moving", moving?.let { formatDuration(it) } ?: "–", Modifier.weight(1f))
+            StatTile(Icons.Rounded.Timer, "Moving", moving?.let { formatDuration(it) } ?: "–", Modifier.weight(1f), MaterialTheme.apple.green)
             StatTile(
                 Icons.Rounded.PauseCircleOutline,
                 "Stopped",
                 profile?.let { formatDuration(it.stoppedMillis, zero = "0 min") } ?: "–",
                 Modifier.weight(1f),
+                MaterialTheme.apple.orange,
             )
         }
         profile?.movingAverageMetersPerSecond(trip.distanceMeters)?.let { movingAverage ->
@@ -490,11 +516,60 @@ private fun Stats(trip: Trip, profile: RouteProfile?) {
     }
 }
 
+/**
+ * The drive's speedometer on a carbon dashboard: the needle swings up to the top speed,
+ * a dot on the rim marks the average, and the rim is painted in the map's speed colours.
+ */
+@Composable
+private fun Dash(topKmh: Double, averageKmh: Double?) {
+    val max = gaugeMax(topKmh * 1.1, 20.0, 120.0)
+    val onHero = HeroColors.content
+    HeroCard(HeroColors.carbon) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Gauge(
+                value = topKmh.toFloat(),
+                max = max,
+                valueText = String.format(java.util.Locale.getDefault(), "%.0f", topKmh),
+                unit = "km/h top",
+                zones = listOf(
+                    GaugeZone(0f, 10f, SpeedBand.CRAWLING.color()),
+                    GaugeZone(10f, 50f, SpeedBand.SLOW.color()),
+                    GaugeZone(50f, 90f, SpeedBand.FAST.color()),
+                    GaugeZone(90f, max, SpeedBand.FASTEST.color()),
+                ),
+                marker = averageKmh?.toFloat(),
+                majorStep = if (max > 160) 40f else 20f,
+                content = onHero,
+                needle = MaterialTheme.apple.racing,
+                modifier = Modifier.weight(1.2f),
+            )
+            Column(Modifier.weight(1f).padding(start = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                DashReadout("Top speed", formatSpeed(topKmh / 3.6), onHero)
+                DashReadout("Average", averageKmh?.let { formatSpeed(it / 3.6) } ?: "–", onHero, dot = true)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashReadout(label: String, value: String, color: Color, dot: Boolean = false) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (dot) {
+                Box(Modifier.size(7.dp).background(color, CircleShape))
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, color = color.copy(alpha = 0.7f))
+        }
+        Text(value, style = MaterialTheme.typography.titleLarge.tabular().copy(fontStyle = FontStyle.Italic), color = color)
+    }
+}
+
 /** The speed chart. Tap or drag across it to read the speed at any moment, like a stock chart. */
 @Composable
 private fun SpeedCard(profile: RouteProfile, selectedTime: Long?, onSelect: (Long) -> Unit, onClear: () -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    GlassCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (selectedTime != null) {
                     MomentReadout(profile, selectedTime, Modifier.weight(1f))
@@ -527,23 +602,19 @@ private fun SpeedCard(profile: RouteProfile, selectedTime: Long?, onSelect: (Lon
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DriverCard(trip: Trip, onAnswer: (Boolean) -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    GlassCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Who was driving?", style = MaterialTheme.typography.titleMedium)
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                SegmentedButton(
-                    selected = trip.isMine == true,
-                    onClick = { onAnswer(true) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                    icon = { Icon(Icons.Rounded.Person, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                ) { Text("Me") }
-                SegmentedButton(
-                    selected = trip.isMine == false,
-                    onClick = { onAnswer(false) },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                    icon = { Icon(Icons.Rounded.Group, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                ) { Text("Someone else") }
-            }
+            SegmentedControl(
+                options = listOf("Me", "Someone else"),
+                selected = when (trip.isMine) {
+                    true -> 0
+                    false -> 1
+                    null -> null
+                },
+                onSelect = { onAnswer(it == 0) },
+                icons = listOf(Icons.Rounded.Person, Icons.Rounded.Group),
+            )
             Text(
                 when (trip.isMine) {
                     null -> "Not answered yet, so it counts as yours for now."
@@ -560,8 +631,8 @@ private fun DriverCard(trip: Trip, onAnswer: (Boolean) -> Unit) {
 /** Which car this drive was in; switching it moves the kilometres to that car's numbers. */
 @Composable
 private fun CarCard(cars: List<Car>, carId: Long?, onPick: (Long) -> Unit) {
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    GlassCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Which car?", style = MaterialTheme.typography.titleMedium)
             CarChoiceChips(cars, selectedId = carId, onSelect = onPick)
             Text(

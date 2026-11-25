@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ChevronLeft
@@ -61,27 +63,17 @@ internal fun DayScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     val fuelUpStats by viewModel.fuelUpStats.collectAsStateWithLifecycle()
     val showCarNames = cars.size > 1 && viewedCarId == null
     val carNames = cars.associate { it.id to it.name }
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val listState = rememberLazyListState()
+    val scrolled by listState.scrolledState()
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            TopAppBar(
-                title = { Text(day?.let { formatDayHeading(it.date) } ?: "") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-                scrollBehavior = scrollBehavior,
-            )
-        },
+    PageScaffold(
+        title = day?.let { formatDayHeading(it.date) } ?: "",
+        scrolled = scrolled,
+        onBack = onBack,
     ) { padding ->
-        val summary = day ?: return@Scaffold
+        val summary = day ?: return@PageScaffold
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 16.dp,
@@ -100,7 +92,7 @@ internal fun DayScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                     onNext = { viewModel.shiftDay(1) },
                 )
             }
-            item(key = "drives-header") { SectionHeader("Drives") }
+            item(key = "drives-header") { SectionTitle("Drives") }
             if (summary.trips.isEmpty()) {
                 item(key = "empty") { NoDrivesThatDay() }
             } else {
@@ -116,7 +108,7 @@ internal fun DayScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                 }
             }
             if (summary.fuelUps.isNotEmpty()) {
-                item(key = "fuel-header") { SectionHeader("Fill-ups") }
+                item(key = "fuel-header") { SectionTitle("Fill-ups") }
                 items(summary.fuelUps, key = { "fuel-${it.id}" }) { fuelUp ->
                     SwipeToBin(onBin = { viewModel.moveFuelUpToBin(fuelUp.id) }, modifier = Modifier.animateItem()) {
                         FuelUpRow(
@@ -136,13 +128,8 @@ internal fun DayScreen(viewModel: MainViewModel, onBack: () -> Unit) {
 @Composable
 private fun DayCard(summary: DailySummary, isToday: Boolean, onPrevious: () -> Unit, onNext: () -> Unit) {
     val onHero = HeroColors.content
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(Brush.linearGradient(HeroColors.drive)),
-    ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    HeroCard(HeroColors.drive, watermark = Icons.Rounded.DirectionsCar) {
+        run {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     formatDayAndDate(summary.date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()),
@@ -154,24 +141,21 @@ private fun DayCard(summary: DailySummary, isToday: Boolean, onPrevious: () -> U
                     contentColor = onHero,
                     disabledContentColor = onHero.copy(alpha = 0.3f),
                 )
-                IconButton(onClick = onPrevious, colors = arrowColors) {
-                    Icon(Icons.Rounded.ChevronLeft, contentDescription = "Previous day")
-                }
-                IconButton(onClick = onNext, enabled = !isToday, colors = arrowColors) {
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = "Next day")
-                }
+                HeroArrow(Icons.Rounded.ChevronLeft, "Previous day", enabled = true, onClick = onPrevious)
+                Spacer(Modifier.width(8.dp))
+                HeroArrow(Icons.Rounded.ChevronRight, "Next day", enabled = !isToday, onClick = onNext)
             }
 
-            BigNumber(kmNumber(summary.distanceMeters), "km", color = onHero, style = MaterialTheme.typography.displayLarge)
+            CountingKm(summary.distanceMeters, color = onHero)
 
             DayTimeline(summary.trips, summary.date, onHero)
 
-            Row(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HeroStat("Drives", summary.driveCount.toString(), onHero, Modifier.weight(1f))
                 HeroStat("Time", formatDuration(summary.drivingMillis, zero = "0 min"), onHero, Modifier.weight(1f))
                 HeroStat("Avg speed", formatSpeed(summary.averageSpeedMetersPerSecond), onHero, Modifier.weight(1f))
             }
-            Row(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HeroStat("Top speed", formatSpeed(summary.topSpeedMetersPerSecond), onHero, Modifier.weight(1f))
                 HeroStat("Spent on fuel", formatMoney(summary.moneySpent), onHero, Modifier.weight(1f))
                 HeroStat("Litres", formatLitres(summary.litresBought), onHero, Modifier.weight(1f))

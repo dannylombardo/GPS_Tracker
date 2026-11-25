@@ -46,6 +46,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import com.dannylombardo.gpstracker.ui.theme.apple
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dannylombardo.gpstracker.data.DriveBin
@@ -77,25 +85,13 @@ internal fun AllDrivesScreen(
     val showCarNames = cars.size > 1 && viewedCarId == null
     val carNames = cars.associate { it.id to it.name }
     val thisWeek = WeeklySummary.weekStartOf(LocalDate.now())
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val scrolled by listState.scrolledState()
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            TopAppBar(
-                title = { Text("All drives") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = { BinButton(binnedCount, onClick = viewModel::openBin) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-                scrollBehavior = scrollBehavior,
-            )
-        },
+    PageScaffold(
+        title = "All drives",
+        scrolled = scrolled,
+        onBack = onBack,
+        actions = { BinButton(binnedCount, onClick = viewModel::openBin) },
     ) { padding ->
         LazyColumn(
             state = listState,
@@ -203,31 +199,44 @@ private fun FoldHeader(
     modifier: Modifier = Modifier,
 ) {
     val arrow by animateFloatAsState(if (open) 180f else 0f, label = "arrow")
-    Surface(
-        onClick = onToggle,
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        modifier = modifier.fillMaxWidth().padding(top = 8.dp),
+    Row(
+        modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClick = onToggle)
+            .padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(
+                detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value, style = MaterialTheme.typography.titleLarge.tabular())
+            if (unit != null) {
                 Text(
-                    detail,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                    unit,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 3.dp, bottom = 2.dp),
                 )
             }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(value, style = MaterialTheme.typography.titleLarge.tabular())
-                if (unit != null) Text(unit, style = MaterialTheme.typography.labelSmall)
-            }
-            Spacer(Modifier.width(8.dp))
+        }
+        Spacer(Modifier.width(6.dp))
+        Box(
+            Modifier.size(28.dp).background(MaterialTheme.apple.fill, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
                 Icons.Rounded.ExpandMore,
                 contentDescription = if (open) "Hide" else "Show",
-                modifier = Modifier.rotate(arrow),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp).rotate(arrow),
             )
         }
     }
@@ -244,11 +253,7 @@ private fun binCount(viewModel: MainViewModel): Int {
 /** The top bar's way into Recently deleted, with a count when something's in it. */
 @Composable
 private fun BinButton(count: Int, onClick: () -> Unit) {
-    IconButton(onClick = onClick) {
-        BadgedBox(badge = { if (count > 0) Badge { Text(count.toString()) } }) {
-            Icon(Icons.Outlined.Delete, contentDescription = "Recently deleted")
-        }
-    }
+    GlassIconButton(Icons.Outlined.Delete, contentDescription = "Recently deleted", onClick = onClick, badge = count)
 }
 
 /**
@@ -273,25 +278,13 @@ internal fun AllFillUpsScreen(
     val carNames = cars.associate { it.id to it.name }
     val thisMonth = YearMonth.now()
     val monthFormat = remember { DateTimeFormatter.ofPattern("MMMM yyyy") }
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val scrolled by listState.scrolledState()
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            TopAppBar(
-                title = { Text("All fill-ups") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = { BinButton(binnedCount, onClick = viewModel::openBin) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-                scrollBehavior = scrollBehavior,
-            )
-        },
+    PageScaffold(
+        title = "All fill-ups",
+        scrolled = scrolled,
+        onBack = onBack,
+        actions = { BinButton(binnedCount, onClick = viewModel::openBin) },
     ) { padding ->
         LazyColumn(
             state = listState,
@@ -381,29 +374,19 @@ internal fun RecentlyDeletedScreen(viewModel: MainViewModel, onBack: () -> Unit)
     var deletingFuelUp by remember { mutableStateOf<FuelUp?>(null) }
     var emptying by remember { mutableStateOf(false) }
     val now = System.currentTimeMillis()
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val binList = rememberLazyListState()
+    val scrolled by binList.scrolledState()
 
-    Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            TopAppBar(
-                title = { Text("Recently deleted") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    if (total > 0) TextButton(onClick = { emptying = true }) { Text("Empty") }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-                scrollBehavior = scrollBehavior,
-            )
+    PageScaffold(
+        title = "Recently deleted",
+        scrolled = scrolled,
+        onBack = onBack,
+        actions = {
+            if (total > 0) GlassTextButton("Empty", onClick = { emptying = true }, color = MaterialTheme.apple.red)
         },
     ) { padding ->
         LazyColumn(
+            state = binList,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 16.dp,
@@ -486,7 +469,7 @@ internal fun RecentlyDeletedScreen(viewModel: MainViewModel, onBack: () -> Unit)
                 TextButton(onClick = {
                     deleting = null
                     viewModel.deleteTripForever(trip.id)
-                }) { Text("Delete") }
+                }) { Text("Delete", color = MaterialTheme.apple.red) }
             },
             dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
         )
@@ -502,7 +485,7 @@ internal fun RecentlyDeletedScreen(viewModel: MainViewModel, onBack: () -> Unit)
                 TextButton(onClick = {
                     deletingFuelUp = null
                     viewModel.deleteFuelUpForever(fuelUp.id)
-                }) { Text("Delete") }
+                }) { Text("Delete", color = MaterialTheme.apple.red) }
             },
             dismissButton = { TextButton(onClick = { deletingFuelUp = null }) { Text("Cancel") } },
         )
@@ -524,7 +507,7 @@ internal fun RecentlyDeletedScreen(viewModel: MainViewModel, onBack: () -> Unit)
                 TextButton(onClick = {
                     emptying = false
                     viewModel.emptyBin()
-                }) { Text("Empty") }
+                }) { Text("Empty", color = MaterialTheme.apple.red) }
             },
             dismissButton = { TextButton(onClick = { emptying = false }) { Text("Cancel") } },
         )
@@ -542,18 +525,16 @@ private fun BinActions(label: String?, daysLeft: Int, onRestore: () -> Unit, onD
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
         )
-        TextButton(onClick = onRestore) {
-            Icon(Icons.Rounded.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
-            Text("Restore")
-        }
-        IconButton(onClick = onDelete) {
-            Icon(
-                Icons.Outlined.DeleteForever,
-                contentDescription = "Delete for good",
-                tint = MaterialTheme.colorScheme.error,
-            )
-        }
+        TintedButton("Restore", onClick = onRestore, icon = Icons.Rounded.Restore, modifier = Modifier.height(38.dp))
+        Spacer(Modifier.width(8.dp))
+        GlassIconButton(
+            Icons.Outlined.DeleteForever,
+            contentDescription = "Delete for good",
+            onClick = onDelete,
+            tint = MaterialTheme.apple.red,
+            size = 38.dp,
+            iconSize = 20.dp,
+        )
     }
 }
 

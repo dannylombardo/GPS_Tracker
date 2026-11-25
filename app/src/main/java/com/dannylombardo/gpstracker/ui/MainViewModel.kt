@@ -27,6 +27,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import com.dannylombardo.gpstracker.ui.theme.ThemeMode
+import com.dannylombardo.gpstracker.data.EveryoneWeek
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +48,8 @@ data class PermissionState(
     val backgroundLocation: Boolean = false,
     val activityRecognition: Boolean = false,
     val notifications: Boolean = false,
+    /** Car Bluetooth can start drives. Optional. */
+    val bluetooth: Boolean = false,
 ) {
     val canAutoTrack get() = location && backgroundLocation && activityRecognition
 }
@@ -154,6 +158,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         CarStats.distanceByCar(cars, WeeklySummary.of(trips, start, ZoneId.systemDefault()).trips)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** The shown week's driving by everyone, yours and someone else's, across every car. */
+    val everyoneWeek: StateFlow<EveryoneWeek?> = combine(finishedTrips, cars, _weekStart) { trips, cars, start ->
+        val zone = ZoneId.systemDefault()
+        EveryoneWeek.of(WeeklySummary.of(trips, start, zone), cars, zone)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     /** Each car's fuel economy, from only its own fill-ups and drives. */
     val economyByCar: StateFlow<Map<Long, FuelEconomy.Summary>> =
         combine(cars, everyFuelUp, finishedTrips) { cars, fuelUps, trips ->
@@ -214,6 +224,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _fuelDraft = MutableStateFlow<FuelUp?>(null)
     val fuelDraft: StateFlow<FuelUp?> = _fuelDraft.asStateFlow()
 
+    /** Whether the Settings page is open. */
+    private val _settingsOpen = MutableStateFlow(false)
+    val settingsOpen: StateFlow<Boolean> = _settingsOpen.asStateFlow()
+
+    /** Light, dark, or following the phone. */
+    private val _themeMode = MutableStateFlow(AppearancePrefs.themeMode(application))
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+
     private val _stationSpotting = MutableStateFlow(TrackingPrefs.isStationSpottingEnabled(application))
     val stationSpotting: StateFlow<Boolean> = _stationSpotting.asStateFlow()
 
@@ -248,6 +266,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             backgroundLocation = Permissions.hasBackgroundLocation(app),
             activityRecognition = Permissions.hasActivityRecognition(app),
             notifications = Permissions.hasNotifications(app),
+            bluetooth = Permissions.hasBluetooth(app),
         )
         _permissions.value = state
         if (_autoTrack.value && state.canAutoTrack) {
@@ -470,6 +489,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun closeCars() {
         _carsOpen.value = false
+    }
+
+    fun openSettings() {
+        _settingsOpen.value = true
+    }
+
+    fun closeSettings() {
+        _settingsOpen.value = false
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        AppearancePrefs.setThemeMode(app, mode)
+        _themeMode.value = mode
     }
 
     fun setStationSpotting(enabled: Boolean) {

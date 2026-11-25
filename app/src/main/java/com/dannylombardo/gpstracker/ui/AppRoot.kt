@@ -13,22 +13,22 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DirectionsCar
 import androidx.compose.material.icons.outlined.LocalGasStation
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.LocalGasStation
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dannylombardo.gpstracker.ui.theme.apple
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -53,7 +54,7 @@ private enum class Tab(val label: String, val selectedIcon: ImageVector, val ico
     Fuel("Fuel", Icons.Rounded.LocalGasStation, Icons.Outlined.LocalGasStation),
 }
 
-/** What fills the screen, deepest last: the tabs, a day, All drives or All fill-ups, the cars page or Recently deleted, a drive's page. */
+/** What fills the screen, deepest last: the tabs, a day, All drives, All fill-ups or Settings, the cars page or Recently deleted, a drive's page. */
 private sealed interface Page {
     val depth: Int
 
@@ -70,6 +71,10 @@ private sealed interface Page {
     }
 
     data object Day : Page {
+        override val depth = 1
+    }
+
+    data object Settings : Page {
         override val depth = 1
     }
 
@@ -95,6 +100,7 @@ fun AppRoot(viewModel: MainViewModel) {
     val fuelHistoryOpen by viewModel.fuelHistoryOpen.collectAsStateWithLifecycle()
     val binOpen by viewModel.binOpen.collectAsStateWithLifecycle()
     val dayOpen by viewModel.openDay.collectAsStateWithLifecycle()
+    val settingsOpen by viewModel.settingsOpen.collectAsStateWithLifecycle()
     val cars by viewModel.cars.collectAsStateWithLifecycle()
     val fuelDraft by viewModel.fuelDraft.collectAsStateWithLifecycle()
     val fuelUpStats by viewModel.fuelUpStats.collectAsStateWithLifecycle()
@@ -130,10 +136,12 @@ fun AppRoot(viewModel: MainViewModel) {
         dayOpen != null -> Page.Day
         historyOpen -> Page.AllDrives
         fuelHistoryOpen -> Page.AllFillUps
+        settingsOpen -> Page.Settings
         else -> Page.Tabs
     }
 
-    BackHandler(enabled = page != Page.Tabs) {
+    // The fill-up sheet handles Back itself while it's open.
+    BackHandler(enabled = page != Page.Tabs && fuelDraft == null) {
         when (page) {
             is Page.Drive -> viewModel.closeTrip()
             Page.Bin -> viewModel.closeBin()
@@ -141,6 +149,7 @@ fun AppRoot(viewModel: MainViewModel) {
             Page.Day -> viewModel.closeDay()
             Page.AllDrives -> viewModel.closeHistory()
             Page.AllFillUps -> viewModel.closeFuelHistory()
+            Page.Settings -> viewModel.closeSettings()
             Page.Tabs -> Unit
         }
     }
@@ -150,7 +159,7 @@ fun AppRoot(viewModel: MainViewModel) {
             targetState = page,
             transitionSpec = {
                 val opening = targetState.depth > initialState.depth
-                val motion = tween<IntOffset>(350)
+                val motion = tween<IntOffset>(380)
                 if (opening) {
                     (slideInHorizontally(motion) { it } + fadeIn()) togetherWith
                         (slideOutHorizontally(motion) { -it / 4 } + fadeOut())
@@ -168,49 +177,93 @@ fun AppRoot(viewModel: MainViewModel) {
                 Page.AllDrives -> AllDrivesScreen(viewModel, historyList, openedWeeks, onBack = viewModel::closeHistory)
                 Page.AllFillUps -> AllFillUpsScreen(viewModel, fuelHistoryList, openedMonths, onBack = viewModel::closeFuelHistory)
                 Page.Bin -> RecentlyDeletedScreen(viewModel, onBack = viewModel::closeBin)
-                Page.Tabs -> Scaffold(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    bottomBar = {
-                        NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-                            Tab.entries.forEach { item ->
-                                val selected = item == tab
-                                NavigationBarItem(
-                                    selected = selected,
-                                    onClick = { tab = item },
-                                    icon = { Icon(if (selected) item.selectedIcon else item.icon, contentDescription = null) },
-                                    label = { Text(item.label) },
-                                )
-                            }
-                        }
-                    },
-                ) { padding ->
-                    Crossfade(targetState = tab, label = "tab") { shown ->
-                        when (shown) {
-                            Tab.Drives -> DrivesScreen(viewModel, drivesList, padding)
-                            Tab.Fuel -> FuelScreen(viewModel, fuelList, padding)
-                        }
-                    }
-                }
+                Page.Settings -> SettingsScreen(viewModel, onBack = viewModel::closeSettings)
+                Page.Tabs -> TabsPage(
+                    tab = tab,
+                    onTab = { tab = it },
+                    viewModel = viewModel,
+                    drivesList = drivesList,
+                    fuelList = fuelList,
+                )
             }
         }
+
+        // The fill-up form slides up as a sheet over whatever page is showing.
+        FuelUpSheet(
+            draft = fuelDraft,
+            stats = fuelDraft?.let { fuelUpStats[it.id] },
+            cars = cars,
+            onSave = viewModel::saveFuelUp,
+            onDelete = { fuelDraft?.let { viewModel.moveFuelUpToBin(it.id) } },
+            onDismiss = viewModel::closeFuelUp,
+        )
+
         SnackbarHost(
             snackbar,
             Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
-                // Clear of the tab bar when it's showing.
-                .padding(bottom = if (page == Page.Tabs) 80.dp else 0.dp),
-        )
+                // Clear of the floating tab bar when it's showing.
+                .padding(bottom = if (page == Page.Tabs) TabBarSpace else 8.dp),
+        ) { data ->
+            Snackbar(
+                data,
+                modifier = Modifier.padding(horizontal = 4.dp),
+                shape = RoundedCornerShape(18.dp),
+                containerColor = MaterialTheme.colorScheme.inverseSurface,
+                contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                actionColor = MaterialTheme.apple.blue,
+                dismissActionContentColor = MaterialTheme.colorScheme.inverseOnSurface,
+            )
+        }
     }
+}
 
-    fuelDraft?.let { draft ->
-        FuelUpDialog(
-            draft = draft,
-            stats = fuelUpStats[draft.id],
-            cars = cars,
-            onSave = viewModel::saveFuelUp,
-            onDelete = { viewModel.moveFuelUpToBin(draft.id) },
-            onDismiss = viewModel::closeFuelUp,
-        )
+/** The two tabs under one frosted top bar, with the floating glass tab bar at the bottom. */
+@Composable
+private fun TabsPage(
+    tab: Tab,
+    onTab: (Tab) -> Unit,
+    viewModel: MainViewModel,
+    drivesList: LazyListState,
+    fuelList: LazyListState,
+) {
+    val list = if (tab == Tab.Drives) drivesList else fuelList
+    val scrolled by list.scrolledState()
+    val titleGone by list.largeTitleGoneState()
+    val items = remember { Tab.entries.map { TabItem(it.label, it.icon, it.selectedIcon) } }
+    PageScaffold(
+        title = tab.label,
+        scrolled = scrolled,
+        showTitle = titleGone,
+        bottomSpace = TabBarSpace,
+        actions = {
+            if (tab == Tab.Fuel) {
+                GlassIconButton(
+                    Icons.Rounded.Add,
+                    contentDescription = "Add fill-up",
+                    onClick = { viewModel.openFuelUp() },
+                    tint = MaterialTheme.colorScheme.primary,
+                    iconSize = 26.dp,
+                )
+            }
+            GlassIconButton(Icons.Rounded.Settings, contentDescription = "Settings", onClick = viewModel::openSettings)
+        },
+        bottomBar = { haze ->
+            GlassTabBar(
+                items = items,
+                selected = tab.ordinal,
+                onSelect = { onTab(Tab.entries[it]) },
+                hazeState = haze,
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+            )
+        },
+    ) { padding ->
+        Crossfade(targetState = tab, label = "tab") { shown ->
+            when (shown) {
+                Tab.Drives -> DrivesScreen(viewModel, drivesList, padding)
+                Tab.Fuel -> FuelScreen(viewModel, fuelList, padding)
+            }
+        }
     }
 }

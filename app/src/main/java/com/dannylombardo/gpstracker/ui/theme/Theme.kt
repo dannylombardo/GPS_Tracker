@@ -2,100 +2,191 @@ package com.dannylombardo.gpstracker.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dannylombardo.gpstracker.R
 
 /*
- * A fixed road-sign blue palette (the launcher icon's colour) rather than the
- * wallpaper-based dynamic colours, so the app looks the same on every phone.
- * Teal is the fuel accent.
+ * An Apple-style look: the iOS system colours (blue tint, grouped grey background, white
+ * cards; true black in dark mode), Inter type set at the iOS sizes, and generously rounded
+ * shapes. Glass surfaces (bars, tab bar, cards) get their colours from [GlassColors].
  */
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF1B5BAA),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFD5E3FF),
-    onPrimaryContainer = Color(0xFF001B3C),
-    secondary = Color(0xFF535F70),
-    onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFD7E3F8),
-    onSecondaryContainer = Color(0xFF101C2B),
-    tertiary = Color(0xFF00696E),
-    onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFF9CF1F5),
-    onTertiaryContainer = Color(0xFF002022),
-    error = Color(0xFFBA1A1A),
-    onError = Color(0xFFFFFFFF),
-    errorContainer = Color(0xFFFFDAD6),
-    onErrorContainer = Color(0xFF410002),
-    background = Color(0xFFF8F9FF),
-    onBackground = Color(0xFF191C20),
-    surface = Color(0xFFF8F9FF),
-    onSurface = Color(0xFF191C20),
-    surfaceVariant = Color(0xFFDFE2EB),
-    onSurfaceVariant = Color(0xFF43474E),
-    outline = Color(0xFF73777F),
-    outlineVariant = Color(0xFFC3C6CF),
-    inverseSurface = Color(0xFF2E3036),
-    inverseOnSurface = Color(0xFFEFF0F7),
-    inversePrimary = Color(0xFFA7C8FF),
-    surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFF2F3FA),
-    surfaceContainer = Color(0xFFECEEF4),
-    surfaceContainerHigh = Color(0xFFE6E8EE),
-    surfaceContainerHighest = Color(0xFFE1E2E8),
+
+/** Light, dark, or whatever the phone is set to. Picked in Settings. */
+enum class ThemeMode { System, Light, Dark }
+
+/** Whether the app is drawing in dark mode, which can differ from the phone's setting. */
+val LocalDarkTheme = staticCompositionLocalOf { false }
+
+/** The iOS system colours the app uses beyond the Material roles. */
+@Immutable
+data class AppleColors(
+    /** The motorsport accent: racing red. The app's tint colour. */
+    val racing: Color,
+    /** Warm amber, like a gauge's warning light; the fuel accent. */
+    val amber: Color,
+    val blue: Color,
+    val green: Color,
+    val orange: Color,
+    val red: Color,
+    val teal: Color,
+    val indigo: Color,
+    val yellow: Color,
+    /** The grey behind grouped content. */
+    val groupedBackground: Color,
+    /** Cards and grouped rows. */
+    val card: Color,
+    /** Fills for tracks, unselected controls and thumbnails. */
+    val fill: Color,
+    val separator: Color,
+    val secondaryLabel: Color,
+    val tertiaryLabel: Color,
 )
 
-private val DarkColors = darkColorScheme(
-    primary = Color(0xFFA7C8FF),
-    onPrimary = Color(0xFF003061),
-    primaryContainer = Color(0xFF004788),
-    onPrimaryContainer = Color(0xFFD5E3FF),
-    secondary = Color(0xFFBBC7DB),
-    onSecondary = Color(0xFF253141),
-    secondaryContainer = Color(0xFF3B4858),
-    onSecondaryContainer = Color(0xFFD7E3F8),
-    tertiary = Color(0xFF80D4D9),
-    onTertiary = Color(0xFF003739),
-    tertiaryContainer = Color(0xFF004F53),
-    onTertiaryContainer = Color(0xFF9CF1F5),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-    errorContainer = Color(0xFF93000A),
-    onErrorContainer = Color(0xFFFFDAD6),
-    background = Color(0xFF111318),
-    onBackground = Color(0xFFE1E2E8),
-    surface = Color(0xFF111318),
-    onSurface = Color(0xFFE1E2E8),
-    surfaceVariant = Color(0xFF43474E),
-    onSurfaceVariant = Color(0xFFC3C6CF),
-    outline = Color(0xFF8D9199),
-    outlineVariant = Color(0xFF43474E),
-    inverseSurface = Color(0xFFE1E2E8),
-    inverseOnSurface = Color(0xFF2E3036),
-    inversePrimary = Color(0xFF1B5BAA),
-    surfaceContainerLowest = Color(0xFF0C0E13),
-    surfaceContainerLow = Color(0xFF191C20),
-    surfaceContainer = Color(0xFF1D2024),
-    surfaceContainerHigh = Color(0xFF282A2F),
-    surfaceContainerHighest = Color(0xFF33353A),
+private val LightApple = AppleColors(
+    racing = Color(0xFFE10600),
+    amber = Color(0xFFF59E0B),
+    blue = Color(0xFF007AFF),
+    green = Color(0xFF34C759),
+    orange = Color(0xFFFF9500),
+    red = Color(0xFFFF3B30),
+    teal = Color(0xFF30B0C7),
+    indigo = Color(0xFF5856D6),
+    yellow = Color(0xFFFFCC00),
+    groupedBackground = Color(0xFFF2F2F7),
+    card = Color(0xFFFFFFFF),
+    fill = Color(0xFFE9E9EE),
+    separator = Color(0xFFD1D1D6),
+    secondaryLabel = Color(0xFF6E6E73),
+    tertiaryLabel = Color(0xFFAEAEB2),
+)
+
+private val DarkApple = AppleColors(
+    racing = Color(0xFFFF3B30),
+    amber = Color(0xFFFFB020),
+    blue = Color(0xFF0A84FF),
+    green = Color(0xFF30D158),
+    orange = Color(0xFFFF9F0A),
+    red = Color(0xFFFF453A),
+    teal = Color(0xFF40C8E0),
+    indigo = Color(0xFF5E5CE6),
+    yellow = Color(0xFFFFD60A),
+    groupedBackground = Color(0xFF09090B),
+    card = Color(0xFF1A1A1E),
+    fill = Color(0xFF2C2C2E),
+    separator = Color(0xFF38383A),
+    secondaryLabel = Color(0xFF98989F),
+    tertiaryLabel = Color(0xFF636366),
+)
+
+val LocalAppleColors = staticCompositionLocalOf { LightApple }
+
+/** Shorthand for the iOS colours: `MaterialTheme.apple.green`. */
+val MaterialTheme.apple: AppleColors
+    @Composable get() = LocalAppleColors.current
+
+private fun lightScheme(c: AppleColors) = lightColorScheme(
+    primary = c.racing,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFFFE4E1),
+    onPrimaryContainer = Color(0xFFB00500),
+    secondary = c.secondaryLabel,
+    onSecondary = Color.White,
+    secondaryContainer = c.fill,
+    onSecondaryContainer = Color(0xFF1C1C1E),
+    tertiary = Color(0xFF0F98AE),
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFDDF4F8),
+    onTertiaryContainer = Color(0xFF0B6F80),
+    error = c.red,
+    onError = Color.White,
+    errorContainer = Color(0xFFFFE5E3),
+    onErrorContainer = Color(0xFFC4221A),
+    background = c.groupedBackground,
+    onBackground = Color.Black,
+    surface = c.groupedBackground,
+    onSurface = Color.Black,
+    surfaceVariant = c.fill,
+    onSurfaceVariant = c.secondaryLabel,
+    outline = c.tertiaryLabel,
+    outlineVariant = c.separator,
+    inverseSurface = Color(0xFF1C1C1E),
+    inverseOnSurface = Color.White,
+    inversePrimary = Color(0xFFFF3B30),
+    surfaceTint = Color.Transparent,
+    scrim = Color.Black,
+    surfaceBright = c.card,
+    surfaceDim = c.groupedBackground,
+    surfaceContainerLowest = c.card,
+    surfaceContainerLow = c.card,
+    surfaceContainer = c.card,
+    surfaceContainerHigh = c.card,
+    surfaceContainerHighest = c.fill,
+)
+
+private fun darkScheme(c: AppleColors) = darkColorScheme(
+    primary = c.racing,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF3D0F0C),
+    onPrimaryContainer = Color(0xFFFF9A90),
+    secondary = c.secondaryLabel,
+    onSecondary = Color.Black,
+    secondaryContainer = c.fill,
+    onSecondaryContainer = Color.White,
+    tertiary = c.teal,
+    onTertiary = Color.Black,
+    tertiaryContainer = Color(0xFF0D3840),
+    onTertiaryContainer = Color(0xFF7FE0F0),
+    error = c.red,
+    onError = Color.White,
+    errorContainer = Color(0xFF3D1412),
+    onErrorContainer = Color(0xFFFF8F87),
+    background = c.groupedBackground,
+    onBackground = Color.White,
+    surface = c.groupedBackground,
+    onSurface = Color.White,
+    surfaceVariant = c.fill,
+    onSurfaceVariant = c.secondaryLabel,
+    outline = c.tertiaryLabel,
+    outlineVariant = c.separator,
+    inverseSurface = Color(0xFFF2F2F7),
+    inverseOnSurface = Color.Black,
+    inversePrimary = Color(0xFFE10600),
+    surfaceTint = Color.Transparent,
+    scrim = Color.Black,
+    surfaceBright = Color(0xFF2C2C2E),
+    surfaceDim = c.groupedBackground,
+    surfaceContainerLowest = Color(0xFF0E0E10),
+    surfaceContainerLow = c.card,
+    surfaceContainer = c.card,
+    surfaceContainerHigh = c.card,
+    surfaceContainerHighest = c.fill,
 )
 
 /** Where a drive started and ended, on the map and in route previews. */
 object RouteColors {
-    val start = Color(0xFF2E9E5B)
-    val end = Color(0xFFD9473F)
+    val start = Color(0xFF34C759)
+    val end = Color(0xFFFF3B30)
 }
 
-/** Route colours on the drive map, slowest to fastest. */
+/** Route colours on the drive map, slowest to fastest. Red under 10 km/h, yellow to 50, green to 90, purple above. */
 object SpeedColors {
     val crawling = Color(0xFFE5392F)
     val slow = Color(0xFFF2B705)
@@ -103,19 +194,65 @@ object SpeedColors {
     val fastest = Color(0xFF8E44E0)
 }
 
-private val BaseTypography = Typography()
+/** The coloured headline cards: racing red for driving, amber for fuel, green while recording. Same in light and dark. */
+object HeroColors {
+    val drive = listOf(Color(0xFFFF4433), Color(0xFFC1061B), Color(0xFF6E0414))
+    val fuel = listOf(Color(0xFFFFB627), Color(0xFFF2700D), Color(0xFFB3360B))
+    val live = listOf(Color(0xFF22D46B), Color(0xFF0B8F4A), Color(0xFF064D2B))
 
-private val AppTypography = BaseTypography.copy(
-    displayLarge = BaseTypography.displayLarge.copy(fontWeight = FontWeight.SemiBold, letterSpacing = (-1).sp),
-    displayMedium = BaseTypography.displayMedium.copy(fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp),
-    displaySmall = BaseTypography.displaySmall.copy(fontWeight = FontWeight.SemiBold, letterSpacing = (-0.5).sp),
-    headlineLarge = BaseTypography.headlineLarge.copy(fontWeight = FontWeight.SemiBold),
-    headlineMedium = BaseTypography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
-    headlineSmall = BaseTypography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
-    titleLarge = BaseTypography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-    titleMedium = BaseTypography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-    titleSmall = BaseTypography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-    labelLarge = BaseTypography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+    /** Carbon: near-black graphite, for cards that should look like a dashboard. */
+    val carbon = listOf(Color(0xFF2B2B31), Color(0xFF151518), Color(0xFF0B0B0D))
+    val content = Color.White
+}
+
+/** Inter: the closest open typeface to Apple's San Francisco. Display cuts for the big sizes. */
+private val Inter = FontFamily(
+    Font(R.font.inter_regular, FontWeight.Normal),
+    Font(R.font.inter_medium, FontWeight.Medium),
+    Font(R.font.inter_semibold, FontWeight.SemiBold),
+    Font(R.font.inter_bold, FontWeight.Bold),
+)
+
+private val InterDisplay = FontFamily(
+    Font(R.font.inter_display_semibold, FontWeight.SemiBold),
+    Font(R.font.inter_display_bold, FontWeight.Bold),
+)
+
+private fun style(
+    family: FontFamily,
+    size: Int,
+    line: Int,
+    weight: FontWeight,
+    tracking: TextUnit,
+) = TextStyle(
+    fontFamily = family,
+    fontSize = size.sp,
+    lineHeight = line.sp,
+    fontWeight = weight,
+    letterSpacing = tracking,
+)
+
+/*
+ * The iOS type ramp: Large Title 34, Title 1 28, Title 2 22, Title 3 20, Headline 17
+ * semibold, Body 17, Subheadline 15, Footnote 13, Caption 12 and 11.
+ */
+private val AppTypography = Typography(
+    // The big numbers and page titles lean forward like a race car's livery.
+    displayLarge = style(InterDisplay, 58, 62, FontWeight.Bold, (-1.4).sp).copy(fontStyle = FontStyle.Italic),
+    displayMedium = style(InterDisplay, 46, 50, FontWeight.Bold, (-1.0).sp).copy(fontStyle = FontStyle.Italic),
+    displaySmall = style(InterDisplay, 36, 42, FontWeight.Bold, (-0.7).sp).copy(fontStyle = FontStyle.Italic),
+    headlineLarge = style(InterDisplay, 34, 41, FontWeight.Bold, (-0.6).sp).copy(fontStyle = FontStyle.Italic),
+    headlineMedium = style(InterDisplay, 28, 34, FontWeight.Bold, (-0.4).sp),
+    headlineSmall = style(InterDisplay, 22, 28, FontWeight.Bold, (-0.3).sp),
+    titleLarge = style(Inter, 20, 25, FontWeight.SemiBold, (-0.4).sp),
+    titleMedium = style(Inter, 17, 22, FontWeight.SemiBold, (-0.4).sp),
+    titleSmall = style(Inter, 15, 20, FontWeight.SemiBold, (-0.2).sp),
+    bodyLarge = style(Inter, 17, 22, FontWeight.Normal, (-0.4).sp),
+    bodyMedium = style(Inter, 15, 20, FontWeight.Normal, (-0.2).sp),
+    bodySmall = style(Inter, 13, 18, FontWeight.Normal, (-0.05).sp),
+    labelLarge = style(Inter, 17, 22, FontWeight.SemiBold, (-0.4).sp),
+    labelMedium = style(Inter, 13, 16, FontWeight.Medium, (-0.05).sp),
+    labelSmall = style(Inter, 11, 13, FontWeight.Medium, 0.05.sp),
 )
 
 /** Same-width digits, so numbers don't jiggle as they change and line up in lists. */
@@ -124,25 +261,25 @@ fun TextStyle.tabular(): TextStyle = copy(fontFeatureSettings = "tnum")
 private val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(20.dp),
+    medium = RoundedCornerShape(22.dp),
     large = RoundedCornerShape(28.dp),
-    extraLarge = RoundedCornerShape(32.dp),
+    extraLarge = RoundedCornerShape(34.dp),
 )
 
 @Composable
-fun AppTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (dark) DarkColors else LightColors,
-        typography = AppTypography,
-        shapes = AppShapes,
-        content = content,
-    )
-}
-
-/** The coloured headline cards: blue for driving, teal for fuel. Same in light and dark. */
-object HeroColors {
-    val drive = listOf(Color(0xFF2366B8), Color(0xFF123F7A))
-    val fuel = listOf(Color(0xFF00797E), Color(0xFF004649))
-    val live = listOf(Color(0xFF2E7D4F), Color(0xFF1B5235))
-    val content = Color.White
+fun AppTheme(mode: ThemeMode = ThemeMode.System, content: @Composable () -> Unit) {
+    val dark = when (mode) {
+        ThemeMode.System -> isSystemInDarkTheme()
+        ThemeMode.Light -> false
+        ThemeMode.Dark -> true
+    }
+    val apple = if (dark) DarkApple else LightApple
+    CompositionLocalProvider(LocalDarkTheme provides dark, LocalAppleColors provides apple) {
+        val scheme = if (dark) darkScheme(apple) else lightScheme(apple)
+        MaterialTheme(colorScheme = scheme, typography = AppTypography, shapes = AppShapes) {
+            // The pages are drawn on plain boxes rather than Material surfaces, so set the
+            // default text and icon colour here; otherwise it stays black, even in dark mode.
+            CompositionLocalProvider(LocalContentColor provides scheme.onSurface, content = content)
+        }
+    }
 }
