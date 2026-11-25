@@ -70,6 +70,8 @@ import com.dannylombardo.gpstracker.data.SpeedBand
 import com.dannylombardo.gpstracker.data.SpeedRuns
 import com.dannylombardo.gpstracker.data.Trip
 import com.dannylombardo.gpstracker.ui.theme.RouteColors
+import com.dannylombardo.gpstracker.ui.theme.HeroColors
+import androidx.compose.ui.text.font.FontStyle
 import com.dannylombardo.gpstracker.ui.theme.LocalDarkTheme
 import com.dannylombardo.gpstracker.ui.theme.apple
 import androidx.compose.foundation.border
@@ -476,6 +478,7 @@ private fun TimePoint(color: Color, label: String, time: String) {
 private fun Stats(trip: Trip, profile: RouteProfile?) {
     val moving = profile?.movingMillis?.takeIf { it > 0 }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        trip.topSpeedMetersPerSecond?.let { top -> Dash(top * 3.6, trip.averageSpeedMetersPerSecond?.times(3.6)) }
         StatRow {
             StatTile(
                 Icons.Rounded.Speed,
@@ -510,6 +513,55 @@ private fun Stats(trip: Trip, profile: RouteProfile?) {
                 modifier = Modifier.padding(start = 4.dp),
             )
         }
+    }
+}
+
+/**
+ * The drive's speedometer on a carbon dashboard: the needle swings up to the top speed,
+ * a dot on the rim marks the average, and the rim is painted in the map's speed colours.
+ */
+@Composable
+private fun Dash(topKmh: Double, averageKmh: Double?) {
+    val max = gaugeMax(topKmh * 1.1, 20.0, 120.0)
+    val onHero = HeroColors.content
+    HeroCard(HeroColors.carbon) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Gauge(
+                value = topKmh.toFloat(),
+                max = max,
+                valueText = String.format(java.util.Locale.getDefault(), "%.0f", topKmh),
+                unit = "km/h top",
+                zones = listOf(
+                    GaugeZone(0f, 10f, SpeedBand.CRAWLING.color()),
+                    GaugeZone(10f, 50f, SpeedBand.SLOW.color()),
+                    GaugeZone(50f, 90f, SpeedBand.FAST.color()),
+                    GaugeZone(90f, max, SpeedBand.FASTEST.color()),
+                ),
+                marker = averageKmh?.toFloat(),
+                majorStep = if (max > 160) 40f else 20f,
+                content = onHero,
+                needle = MaterialTheme.apple.racing,
+                modifier = Modifier.weight(1.2f),
+            )
+            Column(Modifier.weight(1f).padding(start = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                DashReadout("Top speed", formatSpeed(topKmh / 3.6), onHero)
+                DashReadout("Average", averageKmh?.let { formatSpeed(it / 3.6) } ?: "–", onHero, dot = true)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashReadout(label: String, value: String, color: Color, dot: Boolean = false) {
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (dot) {
+                Box(Modifier.size(7.dp).background(color, CircleShape))
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(label.uppercase(), style = MaterialTheme.typography.labelSmall, color = color.copy(alpha = 0.7f))
+        }
+        Text(value, style = MaterialTheme.typography.titleLarge.tabular().copy(fontStyle = FontStyle.Italic), color = color)
     }
 }
 

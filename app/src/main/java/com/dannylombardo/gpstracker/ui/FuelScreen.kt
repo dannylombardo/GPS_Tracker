@@ -41,6 +41,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
@@ -160,13 +161,35 @@ private fun EconomyCard(economy: FuelEconomy.Summary, latest: FuelUp?, title: St
             Text(title, style = MaterialTheme.typography.titleMedium, color = onHero)
             val average = economy.averageLitresPer100Km
             if (average != null) {
-                BigNumber(consumptionNumber(average), "L/100km", color = onHero, style = MaterialTheme.typography.displayLarge)
                 val stretches = economy.intervals.count { it.litresPer100Km != null }
-                Text(
-                    "Measured over $stretches full " + if (stretches == 1) "tank" else "tanks",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = onHero.copy(alpha = 0.75f),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // An economy gauge: green when frugal, amber, then red when thirsty.
+                    val top = gaugeMax(maxOf(average * 1.4, 15.0), 5.0, 15.0)
+                    Gauge(
+                        value = average.toFloat(),
+                        max = top,
+                        valueText = consumptionNumber(average),
+                        unit = "L/100km",
+                        zones = listOf(
+                            GaugeZone(0f, 7f, Color(0xFF7CFFB2).copy(alpha = 0.85f)),
+                            GaugeZone(7f, 11f, Color.White.copy(alpha = 0.55f)),
+                            GaugeZone(11f, top, Color(0xFF5A0000).copy(alpha = 0.6f)),
+                        ),
+                        majorStep = top / 5,
+                        content = onHero,
+                        needle = onHero,
+                        modifier = Modifier.weight(1.1f),
+                    )
+                    Column(Modifier.weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Real economy", style = MaterialTheme.typography.labelMedium, color = onHero.copy(alpha = 0.8f))
+                        BigNumber(consumptionNumber(average), "L", color = onHero, style = MaterialTheme.typography.displaySmall)
+                        Text(
+                            "Measured over $stretches full " + if (stretches == 1) "tank" else "tanks",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = onHero.copy(alpha = 0.75f),
+                        )
+                    }
+                }
             } else {
                 Text(
                     "Fill the tank right up twice and your real L/100km shows here.",
