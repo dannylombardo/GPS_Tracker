@@ -12,12 +12,15 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.dannylombardo.gpstracker.garage.GarageIntents
 import com.dannylombardo.gpstracker.tracking.FuelPrompt
+import com.dannylombardo.gpstracker.ui.garage.GarageViewModel
 import com.dannylombardo.gpstracker.ui.theme.AppTheme
 import com.dannylombardo.gpstracker.ui.theme.LocalDarkTheme
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
+    private val garageViewModel: GarageViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,7 +41,7 @@ class MainActivity : ComponentActivity() {
                     enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
                     onDispose { }
                 }
-                AppRoot(viewModel)
+                AppRoot(viewModel, garageViewModel)
             }
         }
     }
@@ -53,6 +56,7 @@ class MainActivity : ComponentActivity() {
         if (intent == null || (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
         FuelPrompt.draftFrom(intent)?.let(viewModel::openFuelUp)
         intent.getLongExtra(EXTRA_OPEN_TRIP_ID, -1).takeIf { it >= 0 }?.let(viewModel::openTrip)
+        garageViewModel.handleOpen(intent.getStringExtra(GarageIntents.EXTRA_OPEN))
     }
 
     companion object {

@@ -20,6 +20,8 @@ import com.dannylombardo.gpstracker.R
 import com.dannylombardo.gpstracker.data.RoutePoint
 import com.dannylombardo.gpstracker.data.CarRepository
 import com.dannylombardo.gpstracker.data.TripRepository
+import com.dannylombardo.gpstracker.garage.GarageIntents
+import com.dannylombardo.gpstracker.garage.GarageReminders
 import com.dannylombardo.gpstracker.ui.MainActivity
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
@@ -74,6 +76,10 @@ class DriveTrackingService : LifecycleService() {
     private var ending = false
     private var restartAfterEnding = false
     private var notifiedDistanceTenths = -1L
+    private var notifiedSpeedKmh = -1
+    private var notifiedAt = 0L
+    private var tripStartTime = 0L
+    private var recentSpeeds: List<Pair<Long, Float>> = emptyList()
 
     // Serialises database writes so a trip is never finished or deleted while a point is being added.
     private val writeLock = Mutex()
@@ -225,7 +231,10 @@ class DriveTrackingService : LifecycleService() {
         }
         tracker = newTracker
         tripId = id
+        tripStartTime = repository.trip(id)?.startTime ?: startTime
+        recentSpeeds = emptyList()
         DriveState.setActiveTrip(id)
+        publishLive(null, null)
     }
 
     private fun startWatchdog() {
@@ -298,7 +307,29 @@ class DriveTrackingService : LifecycleService() {
                 }
             }
         }
+        recentSpeeds = LiveDrive.trimmed(
+            recentSpeeds + listOfNotNull(fix.speedMetersPerSecond?.let { fix.timeMillis to it }),
+            fix.timeMillis,
+        )
+        publishLive(fix.speedMetersPerSecond?.toDouble(), fix.timeMillis)
         updateNotification(force = false)
+    }
+
+    /** Shares the drive's numbers with the live screen. */
+    private fun publishLive(speed: Double?, fixTime: Long?) {
+        val id = tripId ?: return
+        val t = tracker ?: return
+        DriveState.setLive(
+            LiveDrive(
+                tripId = id,
+                startTime = tripStartTime,
+                distanceMeters = t.distanceMeters,
+                speedMetersPerSecond = speed,
+                topSpeedMetersPerSecond = t.topSpeedMetersPerSecond,
+                lastFixTime = fixTime,
+                recentSpeeds = recentSpeeds,
+            ),
+        )
     }
 
     private fun requestEnd() {
@@ -328,13 +359,25 @@ class DriveTrackingService : LifecycleService() {
                 repository.finishTrip(id, endTime, distance, topSpeed, MIN_TRIP_METERS) to route
             }
             if (kept) DriverCheck.ask(this, id, distance)
+            DriveState.setLive(null)
             // Even a drive too short to keep may have been a hop to the gas station.
             checkForGasStation(if (kept) id else null, route)
+            if (kept) {
+                // Score the drive, update the widget, and check for maintenance, fuel and budget nudges.
+                val carId = writeLock.withLock { repository.trip(id)?.carId }
+                withTimeoutOrNull(GARAGE_TIMEOUT_MS) {
+                    runCatching { GarageReminders.afterDrive(this@DriveTrackingService, carId) }
+                        .onFailure { Log.w(TAG, "Garage check failed", it) }
+                }
+            }
         }
         tripId = null
         tracker = null
         notifiedDistanceTenths = -1L
+        notifiedSpeedKmh = -1
+        recentSpeeds = emptyList()
         DriveState.setActiveTrip(null)
+        DriveState.setLive(null)
         ending = false
 
         if (restartAfterEnding) {
@@ -368,6 +411,7 @@ class DriveTrackingService : LifecycleService() {
         locationClient.removeLocationUpdates(locationCallback)
         DriveState.isServiceRunning = false
         DriveState.setActiveTrip(null)
+        DriveState.setLive(null)
         super.onDestroy()
     }
 
@@ -391,8 +435,13 @@ class DriveTrackingService : LifecycleService() {
     private fun updateNotification(force: Boolean) {
         val distance = tracker?.distanceMeters
         val tenths = distance?.let { (it / 100).toLong() } ?: -1L
-        if (!force && tenths == notifiedDistanceTenths) return
+        val speedKmh = DriveState.live.value?.speedMetersPerSecond?.let { (it * 3.6).toInt() } ?: -1
+        val now = System.currentTimeMillis()
+        val speedChanged = kotlin.math.abs(speedKmh - notifiedSpeedKmh) >= 3 && now - notifiedAt >= 3_000
+        if (!force && tenths == notifiedDistanceTenths && !speedChanged) return
         notifiedDistanceTenths = tenths
+        notifiedSpeedKmh = speedKmh
+        notifiedAt = now
         if (Permissions.hasNotifications(this)) {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(distance))
         }
@@ -403,8 +452,8 @@ class DriveTrackingService : LifecycleService() {
         val openApp = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE,
+            if (distanceMeters == null) Intent(this, MainActivity::class.java) else GarageIntents.openLive(this),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val endDrive = PendingIntent.getForegroundService(
             this,
@@ -420,8 +469,19 @@ class DriveTrackingService : LifecycleService() {
                     setContentText("GPS turns off again if you're not driving")
                     addAction(0, "Not driving", endDrive)
                 } else {
-                    setContentTitle("Recording drive")
-                    setContentText(String.format(Locale.getDefault(), "%.1f km so far", distanceMeters / 1000))
+                    val live = DriveState.live.value
+                    val speed = live?.speedMetersPerSecond?.let { (it * 3.6).toInt() }
+                    val top = live?.topSpeedMetersPerSecond?.takeIf { it > 0 }?.let { (it * 3.6).toInt() }
+                    val avg = live?.averageSpeedMetersPerSecond?.let { (it * 3.6).toInt() }
+                    setContentTitle(if (speed != null) "Recording drive · $speed km/h" else "Recording drive")
+                    val km = String.format(Locale.getDefault(), "%.1f km", distanceMeters / 1000)
+                    setContentText(listOfNotNull(km, avg?.let { "avg $it km/h" }, top?.let { "top $it km/h" }).joinToString(" · "))
+                    setSubText("Tap for the live dash")
+                    if (tripStartTime > 0) {
+                        setWhen(tripStartTime)
+                        setShowWhen(true)
+                        setUsesChronometer(true)
+                    }
                     addAction(0, "End drive", endDrive)
                 }
             }
@@ -452,6 +512,7 @@ class DriveTrackingService : LifecycleService() {
         private const val WATCHDOG_INTERVAL_MS = 30_000L
         private const val PROBE_CHECK_INTERVAL_MS = 15_000L
         private const val STATION_LOOKUP_TIMEOUT_MS = 40_000L
+        private const val GARAGE_TIMEOUT_MS = 30_000L
 
         fun vehicleEntered(context: Context, trigger: DriveTrigger) = send(context, ACTION_START, trigger)
 
