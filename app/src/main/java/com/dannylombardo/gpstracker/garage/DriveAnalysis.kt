@@ -7,6 +7,7 @@ import java.time.ZoneId
 import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -166,7 +167,7 @@ object DriveAnalysis {
                 j--
             }
             val start = startAt ?: continue
-            val millis = (reachedAt - start).toLong()
+            val millis = (reachedAt - start).roundToLong()
             // Quicker than 2.5 s is a GPS jump, not a launch.
             if (millis in 2_500..40_000 && (best == null || millis < best)) best = millis
         }
