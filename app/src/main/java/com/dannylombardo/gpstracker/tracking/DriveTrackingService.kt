@@ -40,7 +40,12 @@ import java.util.Locale
 
 /**
  * Records one drive at a time. It only runs (and GPS is only on) between a
- * "got into a vehicle" event and the end of that drive.
+ * "might be in a vehicle" event and the end of that drive.
+ *
+ * A possible drive (motion sensors or car Bluetooth) first has to be confirmed by GPS
+ * showing car-like movement, see [DriveConfirmation]. Until then nothing is saved; if
+ * it isn't confirmed within the trigger's time limit, or we're seen leaving the vehicle,
+ * GPS goes straight back off. Drives started by hand skip the check.
  *
  * A drive ends when:
  * - Android reports we left the vehicle, and we haven't got back in within [EXIT_GRACE_MS]
@@ -59,6 +64,11 @@ class DriveTrackingService : LifecycleService() {
     private var tripId: Long? = null
     private var tracker: TripDistanceTracker? = null
     private var startJob: Job? = null
+    private var probe: DriveConfirmation? = null
+    private var probeStartedAt = 0L
+    private var probeDeadline = 0L
+    private var probeJob: Job? = null
+    private var restartTrigger = DriveTrigger.ACTIVITY
     private var exitJob: Job? = null
     private var watchdogJob: Job? = null
     private var ending = false
@@ -89,33 +99,116 @@ class DriveTrackingService : LifecycleService() {
         DriveState.isServiceRunning = true
 
         // A null intent means Android restarted us after killing the process mid-drive.
-        when (intent?.action ?: ACTION_START) {
-            ACTION_START -> onVehicleEntered()
+        when (intent?.action) {
+            // Resumes the interrupted drive if there was one, otherwise checks with GPS as usual.
+            null -> onVehicleEntered(DriveTrigger.ACTIVITY)
+            ACTION_START -> onVehicleEntered(DriveTrigger.fromName(intent.getStringExtra(EXTRA_TRIGGER)))
             ACTION_VEHICLE_EXIT -> {
-                if (exitJob == null) {
+                if (probe != null && tripId == null && startJob == null) {
+                    // Left the "vehicle" before GPS saw any driving: a false start.
+                    falseStart()
+                } else if (exitJob == null) {
                     exitJob = lifecycleScope.launch {
                         delay(EXIT_GRACE_MS)
                         requestEnd()
                     }
                 }
             }
-            ACTION_STOP -> requestEnd()
+            ACTION_STOP -> if (probe != null && tripId == null && startJob == null) falseStart() else requestEnd()
         }
         return START_STICKY
     }
 
-    private fun onVehicleEntered() {
+    private fun onVehicleEntered(trigger: DriveTrigger) {
         exitJob?.cancel()
         exitJob = null
         when {
-            ending -> restartAfterEnding = true
-            tripId == null && startJob == null -> startJob = lifecycleScope.launch { beginTrip() }
+            ending -> {
+                restartAfterEnding = true
+                restartTrigger = trigger
+            }
+            tripId != null || startJob != null -> Unit
+            probe != null -> {
+                if (trigger == DriveTrigger.MANUAL) {
+                    confirmDrive()
+                } else {
+                    probeDeadline = maxOf(probeDeadline, System.currentTimeMillis() + trigger.confirmWithinMillis)
+                }
+            }
+            else -> startJob = lifecycleScope.launch { startDetection(trigger) }
         }
     }
 
-    private suspend fun beginTrip() {
+    /**
+     * Turns GPS on. A drive started by hand, or one Android interrupted mid-way, is
+     * recorded straight away; anything else waits for GPS to confirm we're driving.
+     */
+    private suspend fun startDetection(trigger: DriveTrigger) {
         val now = System.currentTimeMillis()
-        val newTracker = TripDistanceTracker(startTimeMillis = now)
+        val resuming = trigger == DriveTrigger.MANUAL ||
+            writeLock.withLock { repository.findResumableTrip(now, RESUME_WINDOW_MS) } != null
+        if (resuming) {
+            beginTrip(now)
+            startJob = null
+            if (!startLocationUpdates()) {
+                requestEnd()
+                return
+            }
+            startWatchdog()
+            updateNotification(force = true)
+            return
+        }
+
+        probe = DriveConfirmation()
+        probeStartedAt = now
+        probeDeadline = now + trigger.confirmWithinMillis
+        startJob = null
+        updateNotification(force = true)
+        if (!startLocationUpdates()) {
+            requestEnd()
+            return
+        }
+        probeJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(PROBE_CHECK_INTERVAL_MS)
+                if (probe != null && tripId == null && startJob == null &&
+                    System.currentTimeMillis() >= probeDeadline
+                ) {
+                    falseStart()
+                    break
+                }
+            }
+        }
+    }
+
+    /** GPS never saw us driving: forget it, without saving anything, and turn GPS off. */
+    private fun falseStart() {
+        TrackingPrefs.setFalseStartAt(this, System.currentTimeMillis())
+        requestEnd()
+    }
+
+    /** GPS confirmed the drive: save it, including the stretch driven while we were checking. */
+    private fun confirmDrive() {
+        val confirmation = probe ?: return
+        if (startJob != null || tripId != null) return
+        probeJob?.cancel()
+        probeJob = null
+        startJob = lifecycleScope.launch {
+            beginTrip(confirmation.startTimeMillis(probeStartedAt))
+            // Fixes that arrive while the trip is being created are still collected by
+            // the confirmation, so take them all in one go before switching over.
+            val fixes = confirmation.routeFixes()
+            probe = null
+            startJob = null
+            fixes.forEach(::recordFix)
+            startWatchdog()
+            updateNotification(force = true)
+        }
+    }
+
+    private suspend fun beginTrip(startTime: Long) {
+        val now = System.currentTimeMillis()
+        val newTracker = TripDistanceTracker(startTimeMillis = startTime)
         val id = writeLock.withLock {
             val resumable = repository.findResumableTrip(now, RESUME_WINDOW_MS)
             repository.closeAbandonedTrips(exceptTripId = resumable?.id, minDistanceMeters = MIN_TRIP_METERS)
@@ -127,18 +220,16 @@ class DriveTrackingService : LifecycleService() {
                 )
                 resumable.id
             } else {
-                repository.startTrip(now, CarRepository.get(this@DriveTrackingService).activeCarId())
+                repository.startTrip(startTime, CarRepository.get(this@DriveTrackingService).activeCarId())
             }
         }
         tracker = newTracker
         tripId = id
         DriveState.setActiveTrip(id)
-        startJob = null
+    }
 
-        if (!startLocationUpdates()) {
-            requestEnd()
-            return
-        }
+    private fun startWatchdog() {
+        watchdogJob?.cancel()
         watchdogJob = lifecycleScope.launch {
             while (isActive) {
                 delay(WATCHDOG_INTERVAL_MS)
@@ -148,7 +239,6 @@ class DriveTrackingService : LifecycleService() {
                 }
             }
         }
-        updateNotification(force = true)
     }
 
     @SuppressLint("MissingPermission")
@@ -169,8 +259,6 @@ class DriveTrackingService : LifecycleService() {
 
     private fun onLocation(location: Location) {
         if (ending) return
-        val id = tripId ?: return
-        val currentTracker = tracker ?: return
         val fix = Fix(
             latitude = location.latitude,
             longitude = location.longitude,
@@ -178,6 +266,17 @@ class DriveTrackingService : LifecycleService() {
             accuracyMeters = if (location.hasAccuracy()) location.accuracy else null,
             speedMetersPerSecond = if (location.hasSpeed()) location.speed else null,
         )
+        val confirmation = probe
+        if (confirmation != null) {
+            if (confirmation.add(fix)) confirmDrive()
+            return
+        }
+        recordFix(fix)
+    }
+
+    private fun recordFix(fix: Fix) {
+        val id = tripId ?: return
+        val currentTracker = tracker ?: return
         if (!currentTracker.add(fix)) return
 
         val distance = currentTracker.distanceMeters
@@ -211,6 +310,9 @@ class DriveTrackingService : LifecycleService() {
         ending = true
         startJob?.join()
         locationClient.removeLocationUpdates(locationCallback)
+        probeJob?.cancel()
+        probeJob = null
+        probe = null
         exitJob?.cancel()
         exitJob = null
         watchdogJob?.cancel()
@@ -237,7 +339,8 @@ class DriveTrackingService : LifecycleService() {
 
         if (restartAfterEnding) {
             restartAfterEnding = false
-            startJob = lifecycleScope.launch { beginTrip() }
+            val trigger = restartTrigger
+            startJob = lifecycleScope.launch { startDetection(trigger) }
             return
         }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -273,7 +376,7 @@ class DriveTrackingService : LifecycleService() {
             ServiceCompat.startForeground(
                 this,
                 NOTIFICATION_ID,
-                buildNotification(tracker?.distanceMeters ?: 0.0),
+                buildNotification(tracker?.distanceMeters),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
             )
             true
@@ -286,8 +389,8 @@ class DriveTrackingService : LifecycleService() {
 
     @SuppressLint("MissingPermission")
     private fun updateNotification(force: Boolean) {
-        val distance = tracker?.distanceMeters ?: return
-        val tenths = (distance / 100).toLong()
+        val distance = tracker?.distanceMeters
+        val tenths = distance?.let { (it / 100).toLong() } ?: -1L
         if (!force && tenths == notifiedDistanceTenths) return
         notifiedDistanceTenths = tenths
         if (Permissions.hasNotifications(this)) {
@@ -295,7 +398,8 @@ class DriveTrackingService : LifecycleService() {
         }
     }
 
-    private fun buildNotification(distanceMeters: Double): Notification {
+    /** [distanceMeters] is null while GPS is still checking whether we're driving. */
+    private fun buildNotification(distanceMeters: Double?): Notification {
         val openApp = PendingIntent.getActivity(
             this,
             0,
@@ -310,10 +414,18 @@ class DriveTrackingService : LifecycleService() {
         )
         return NotificationCompat.Builder(this, GpsTrackerApp.CHANNEL_TRACKING)
             .setSmallIcon(R.drawable.ic_car)
-            .setContentTitle("Recording drive")
-            .setContentText(String.format(Locale.getDefault(), "%.1f km so far", distanceMeters / 1000))
+            .apply {
+                if (distanceMeters == null) {
+                    setContentTitle("Checking for a drive")
+                    setContentText("GPS turns off again if you're not driving")
+                    addAction(0, "Not driving", endDrive)
+                } else {
+                    setContentTitle("Recording drive")
+                    setContentText(String.format(Locale.getDefault(), "%.1f km so far", distanceMeters / 1000))
+                    addAction(0, "End drive", endDrive)
+                }
+            }
             .setContentIntent(openApp)
-            .addAction(0, "End drive", endDrive)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
@@ -327,6 +439,7 @@ class DriveTrackingService : LifecycleService() {
         private const val ACTION_START = "com.dannylombardo.gpstracker.action.START_DRIVE"
         private const val ACTION_VEHICLE_EXIT = "com.dannylombardo.gpstracker.action.VEHICLE_EXIT"
         private const val ACTION_STOP = "com.dannylombardo.gpstracker.action.STOP_DRIVE"
+        private const val EXTRA_TRIGGER = "trigger"
 
         private const val LOCATION_INTERVAL_MS = 5_000L
         private const val LOCATION_MIN_INTERVAL_MS = 2_000L
@@ -337,21 +450,24 @@ class DriveTrackingService : LifecycleService() {
         private const val STATIONARY_TIMEOUT_MS = 10 * 60_000L
         private const val RESUME_WINDOW_MS = 10 * 60_000L
         private const val WATCHDOG_INTERVAL_MS = 30_000L
+        private const val PROBE_CHECK_INTERVAL_MS = 15_000L
         private const val STATION_LOOKUP_TIMEOUT_MS = 40_000L
 
-        fun vehicleEntered(context: Context) = send(context, ACTION_START)
+        fun vehicleEntered(context: Context, trigger: DriveTrigger) = send(context, ACTION_START, trigger)
 
         fun vehicleExited(context: Context) = send(context, ACTION_VEHICLE_EXIT)
 
-        fun startManually(context: Context) = send(context, ACTION_START)
+        fun startManually(context: Context) = send(context, ACTION_START, DriveTrigger.MANUAL)
 
         fun stopManually(context: Context) = send(context, ACTION_STOP)
 
-        private fun send(context: Context, action: String) {
+        private fun send(context: Context, action: String, trigger: DriveTrigger? = null) {
             try {
                 ContextCompat.startForegroundService(
                     context,
-                    Intent(context, DriveTrackingService::class.java).setAction(action),
+                    Intent(context, DriveTrackingService::class.java)
+                        .setAction(action)
+                        .apply { trigger?.let { putExtra(EXTRA_TRIGGER, it.name) } },
                 )
             } catch (e: IllegalStateException) {
                 Log.w(TAG, "Android refused to start drive tracking", e)

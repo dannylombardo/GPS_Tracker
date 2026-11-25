@@ -130,4 +130,24 @@ class TripDistanceTrackerTest {
         tracker.add(fixAt(200.0, 910, speed = 20f))
         assertEquals(30.0, tracker.topSpeedMetersPerSecond, 0.01)
     }
+
+    @Test
+    fun parkedGpsWanderingAddsNoDistanceAndLetsTheDriveEnd() {
+        val tracker = TripDistanceTracker(startTimeMillis = 0)
+        // Ten minutes parked in a garage: fixes wander 80 m back and forth, reporting no speed.
+        for (i in 0..120) {
+            val north = if (i % 2 == 0) 0.0 else 80.0
+            tracker.add(fixAt(north, i * 5L, accuracy = 45f, speed = 0.2f))
+        }
+        assertEquals(0.0, tracker.distanceMeters, 0.1)
+        assertTrue(tracker.isStationary(nowMillis = 600_000, timeoutMillis = 600_000))
+    }
+
+    @Test
+    fun crawlingInTrafficStillCounts() {
+        val tracker = TripDistanceTracker(startTimeMillis = 0)
+        // Inching forward at 0.8 m/s: each step is small, but the distance builds up.
+        for (i in 0..60) tracker.add(fixAt(i * 4.0, i * 5L, accuracy = 10f, speed = 0.8f))
+        assertEquals(240.0, tracker.distanceMeters, 25.0)
+    }
 }

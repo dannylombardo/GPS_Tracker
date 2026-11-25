@@ -78,15 +78,23 @@ class TripDistanceTracker(
         val speed = fix.speedMetersPerSecond
         recordSpeed(speed?.toDouble() ?: if (step >= minStepMeters) step / seconds else null)
 
+        // Parked indoors or in a garage, GPS wanders by tens of metres while reporting
+        // no speed at all. A jump that's within the fixes' own error and comes with
+        // "not moving" is noise, not driving: it mustn't add distance or keep the drive alive.
+        val noiseMeters = (fix.accuracyMeters ?: 0f) + (previous.accuracyMeters ?: 0f)
+        val standingStill = speed != null && speed < STILL_SPEED_METERS_PER_SECOND
+        fun isJitter(meters: Double) = standingStill && meters < noiseMeters
+
         val currentAnchor = anchor ?: fix
-        if (distanceBetween(currentAnchor, fix) >= movementRadiusMeters ||
+        val fromAnchor = distanceBetween(currentAnchor, fix)
+        if ((fromAnchor >= movementRadiusMeters && !isJitter(fromAnchor)) ||
             (speed != null && speed >= movingSpeedMetersPerSecond)
         ) {
             anchor = fix
             lastMovementMillis = max(lastMovementMillis, fix.timeMillis)
         }
 
-        if (step < minStepMeters) return false
+        if (step < minStepMeters || isJitter(step)) return false
         distanceMeters += step
         lastCounted = fix
         return true
@@ -106,6 +114,7 @@ class TripDistanceTracker(
 
     companion object {
         private const val EARTH_RADIUS_METERS = 6_371_008.8
+        private const val STILL_SPEED_METERS_PER_SECOND = 1f
 
         /** Great-circle (haversine) distance in metres. */
         fun distanceBetween(a: Fix, b: Fix): Double {

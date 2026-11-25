@@ -20,6 +20,18 @@ object Permissions {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             granted(context, Manifest.permission.POST_NOTIFICATIONS)
 
+    /**
+     * Lets a drive start the moment the phone connects to the car's Bluetooth. Optional:
+     * without it, drives still start from motion detection, just a little later.
+     */
+    fun hasBluetooth(context: Context) =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            granted(context, Manifest.permission.BLUETOOTH_CONNECT)
+
+    /** What to ask for so car Bluetooth can start drives (nothing before Android 12). */
+    val bluetoothPermissions: Array<String> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) arrayOf(Manifest.permission.BLUETOOTH_CONNECT) else emptyArray()
+
     /** Everything automatic tracking needs. Notifications are nice to have, not required. */
     fun canAutoTrack(context: Context) =
         hasLocation(context) && hasBackgroundLocation(context) && hasActivityRecognition(context)
