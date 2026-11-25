@@ -1,6 +1,11 @@
 package com.dannylombardo.gpstracker.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.rounded.Bluetooth
+import com.dannylombardo.gpstracker.tracking.Permissions
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -35,6 +40,10 @@ internal fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
     val cars by viewModel.cars.collectAsStateWithLifecycle()
     val binnedTrips by viewModel.binnedTrips.collectAsStateWithLifecycle()
     val binnedFuelUps by viewModel.binnedFuelUps.collectAsStateWithLifecycle()
+    val permissions by viewModel.permissions.collectAsStateWithLifecycle()
+    val askBluetooth = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        viewModel.refresh()
+    }
     val scroll = rememberScrollState()
     val context = LocalContext.current
     val version = remember(context) {
@@ -68,6 +77,31 @@ internal fun SettingsScreen(viewModel: MainViewModel, onBack: () -> Unit) {
                         icons = listOf(Icons.Rounded.BrightnessAuto, Icons.Rounded.LightMode, Icons.Rounded.DarkMode),
                     )
                 }
+            }
+
+            GroupedSection(
+                header = "Tracking",
+                footer = "With Nearby devices allowed, a drive starts the moment your phone connects to your car's " +
+                    "Bluetooth. Without it, drives still start on their own once the phone notices you're driving.",
+            ) {
+                GroupedRow(
+                    "Car Bluetooth",
+                    icon = Icons.Rounded.Bluetooth,
+                    iconColor = MaterialTheme.apple.blue,
+                    subtitle = if (permissions.bluetooth) "Starts drives when your car connects" else "Nearby devices not allowed",
+                    value = if (permissions.bluetooth) "On" else null,
+                    trailing = if (permissions.bluetooth) {
+                        null
+                    } else {
+                        {
+                            TintedButton(
+                                "Allow",
+                                onClick = { askBluetooth.launch(Permissions.bluetoothPermissions) },
+                                modifier = Modifier.height(36.dp),
+                            )
+                        }
+                    },
+                )
             }
 
             GroupedSection(

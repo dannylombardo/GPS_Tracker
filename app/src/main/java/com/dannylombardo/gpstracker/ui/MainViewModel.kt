@@ -48,6 +48,8 @@ data class PermissionState(
     val backgroundLocation: Boolean = false,
     val activityRecognition: Boolean = false,
     val notifications: Boolean = false,
+    /** Car Bluetooth can start drives. Optional. */
+    val bluetooth: Boolean = false,
 ) {
     val canAutoTrack get() = location && backgroundLocation && activityRecognition
 }
@@ -264,6 +266,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             backgroundLocation = Permissions.hasBackgroundLocation(app),
             activityRecognition = Permissions.hasActivityRecognition(app),
             notifications = Permissions.hasNotifications(app),
+            bluetooth = Permissions.hasBluetooth(app),
         )
         _permissions.value = state
         if (_autoTrack.value && state.canAutoTrack) {

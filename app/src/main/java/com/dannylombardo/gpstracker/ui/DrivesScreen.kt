@@ -81,6 +81,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.rememberScrollState
 import com.dannylombardo.gpstracker.data.Car
+import com.dannylombardo.gpstracker.tracking.Permissions
 import com.dannylombardo.gpstracker.data.Trip
 import com.dannylombardo.gpstracker.data.WeeklySummary
 import com.dannylombardo.gpstracker.ui.theme.HeroColors
@@ -628,6 +629,8 @@ private fun SetupCard(permissions: PermissionState, onChanged: () -> Unit) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             add(Manifest.permission.POST_NOTIFICATIONS)
                         }
+                        // Optional: lets a drive start the moment the car's Bluetooth connects.
+                        addAll(Permissions.bluetoothPermissions)
                     }
                     requestMany.launch(wanted.toTypedArray())
                 }
